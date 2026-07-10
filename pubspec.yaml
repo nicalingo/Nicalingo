@@ -14,6 +14,14 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1 # <-- Agregamos la herramienta aquí
+
+# Configuración explícita para que tu icono sea el Coco Feliz
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/coco_feliz.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true

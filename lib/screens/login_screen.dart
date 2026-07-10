@@ -51,13 +51,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-                      // Contenedor del personaje coco_feliz
+                      // Contenedor del personaje coco_feliz corregido
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20.0),
                           child: Image.asset(
                             'assets/images/coco_feliz.png',
-                            fit: Alignment.bottomCenter,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.bottomCenter,
                           ),
                         ),
                       ),
@@ -86,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           children: [
                             const Text(
-                              'Registrate:',
+                              'Registrate',
                               style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 28,
@@ -108,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 fillColor: const Color(0xFFE0E0E0),
                                 filled: true,
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(0), // Rectangular como en tu diseño
+                                  borderRadius: BorderRadius.circular(0), // Rectangular
                                   borderSide: BorderSide.none,
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
@@ -141,11 +142,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // Aquí puedes meter logos temporales o contenedores con color
                                 Container(
                                   width: 45,
                                   height: 45,
-                                  color: const Color(0xFF1877F2), // Color base Facebook
+                                  color: const Color(0xFF1877F2),
                                   child: const Icon(Icons.facebook, color: Colors.white, size: 30),
                                 ),
                                 const SizedBox(width: 20),
@@ -162,7 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextButton(
                               onPressed: () {
                                 if (_formKey.currentState!.validate()) {
-                                  // Lógica de registro preliminar
+                                  // Lógica de validación
                                 }
                               },
                               child: const Text(
@@ -196,7 +196,7 @@ class WaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     var path = Path();
-    path.lineTo(0, 40); // Ajuste inicial del corte
+    path.lineTo(0, 40);
 
     var firstControlPoint = Offset(size.width / 4, 0);
     var firstEndPoint = Offset(size.width / 2, 20);
