@@ -18,7 +18,7 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: false             # <-- Desactivado para que no falle en Windows
+  ios: false
   image_path: "assets/images/icono_app.png"
   min_sdk_android: 21
 
