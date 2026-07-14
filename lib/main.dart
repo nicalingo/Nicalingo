@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_colors.dart';
-import 'screens/splash_screen.dart'; // <-- Importamos tu nueva pantalla de carga
+import 'core/screens/splash_screen.dart'; // Corregido según tu árbol de directorios
 
 void main() {
   runApp(const MyApp());
