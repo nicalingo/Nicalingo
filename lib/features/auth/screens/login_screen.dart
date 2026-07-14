@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro
+import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro[cite: 2]
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -176,11 +176,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   onPressed: () {
                                     if (_formKey.currentState!.validate()) {
-                                      // Si el correo es válido, salta a la pantalla de registro
+                                      // Se envía el texto del correo a la siguiente pantalla[cite: 2]
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) => const RegisterScreen(),
+                                          builder: (context) => RegisterScreen(
+                                            email: _emailController.text,
+                                          ),
                                         ),
                                       );
                                     }

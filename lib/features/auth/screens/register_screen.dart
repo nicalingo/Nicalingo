@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String email; // Recibe el correo ingresado en el login
+
+  const RegisterScreen({super.key, required this.email});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -14,6 +16,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _acceptTerms = false;
+
+  // Variables para alternar la visibilidad de las contraseñas
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Carga automáticamente el correo traído del login
+    _emailController.text = widget.email;
+  }
 
   @override
   void dispose() {
@@ -28,7 +41,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue,
+      backgroundColor: AppColors.primaryBlue, // Fondo azul para la parte superior
       body: SingleChildScrollView(
         child: SizedBox(
           height: size.height,
@@ -46,7 +59,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(top: 15.0, left: 20.0, right: 20.0),
                           child: Image.asset(
-                            'assets/images/coco_espada.png',
+                            'assets/images/coco_espada.png', // Tu asset corregido
                             fit: BoxFit.contain,
                             alignment: Alignment.bottomCenter,
                           ),
@@ -68,7 +81,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
 
-              // Parte inferior: Contenedor Amarillo con bordes redondeados
+              // Parte inferior: Contenedor Amarillo con bordes redondeados tipo carta
               Expanded(
                 flex: 11,
                 child: Container(
@@ -76,7 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   decoration: const BoxDecoration(
                     color: AppColors.primaryYellow,
                     borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(55),
+                      top: Radius.circular(55), // Curva pronunciada del Figma
                     ),
                   ),
                   child: Padding(
@@ -97,11 +110,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 15),
 
-                          // 2. Campo Contraseña
+                          // 2. Campo Contraseña (Con botón de ojito)
                           _buildRoundedInputField(
                             controller: _passwordController,
                             hintText: 'contraseña1234*',
-                            obscureText: true,
+                            obscureText: _obscurePassword,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                                color: Colors.grey.shade600,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                            ),
                             validator: (value) {
                               if (value == null || value.isEmpty) return 'Ingresa tu contraseña';
                               return null;
@@ -109,11 +133,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 15),
 
-                          // 3. Campo Confirmar Contraseña
+                          // 3. Campo Confirmar Contraseña (Con botón de ojito independiente)
                           _buildRoundedInputField(
                             controller: _confirmPasswordController,
                             hintText: 'contraseña1234*',
-                            obscureText: true,
+                            obscureText: _obscureConfirmPassword,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                                color: Colors.grey.shade600,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureConfirmPassword = !_obscureConfirmPassword;
+                                });
+                              },
+                            ),
                             validator: (value) {
                               if (value != _passwordController.text) {
                                 return 'Las contraseñas no coinciden';
@@ -172,7 +207,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF34B3E4),
+                                  backgroundColor: const Color(0xFF34B3E4), // Celeste del login
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
@@ -182,7 +217,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 onPressed: () {
                                   if (_formKey.currentState!.validate() && _acceptTerms) {
-                                    // Lógica para registrar usuario
+                                    // Lógica para registrar usuario en backend/firebase
                                   }
                                 },
                                 child: const Text(
@@ -210,10 +245,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // Helper optimizado y corregido para los Inputs de Texto
   Widget _buildRoundedInputField({
     required TextEditingController controller,
     required String hintText,
     bool obscureText = false,
+    Widget? suffixIcon,
     TextInputType keyboardType = TextInputType.text,
     required String? Function(String?) validator,
   }) {
@@ -232,18 +269,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
-        textAlign: TextAlign.center,
+        textAlign: TextAlign.center, // Texto centrado
         style: const TextStyle(color: Colors.black87, fontFamily: 'Inter', fontSize: 14),
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: TextStyle(color: Colors.grey.shade400, fontFamily: 'Inter'),
           fillColor: Colors.white,
           filled: true,
+          suffixIcon: suffixIcon,
+          // Crea un contrapeso invisible en el lado izquierdo para que el texto siga centrado al llevar ojito
+          prefixIcon: suffixIcon != null 
+              ? const Visibility(
+                  visible: false, 
+                  maintainSize: true, 
+                  maintainAnimation: true, 
+                  maintainState: true,
+                  child: Icon(Icons.visibility),
+                )
+              : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(30),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
         ),
         validator: validator,
       ),
