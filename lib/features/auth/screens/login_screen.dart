@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro[cite: 2]
+import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro[cite: 3]
+import 'package:nicalingo/features/auth/screens/password_screen.dart'; // ¡Agregado el import para iniciar sesión!
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -176,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   onPressed: () {
                                     if (_formKey.currentState!.validate()) {
-                                      // Se envía el texto del correo a la siguiente pantalla[cite: 2]
+                                      // Se envía el texto del correo a la siguiente pantalla[cite: 3]
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -253,9 +254,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const Spacer(),
                             
-                            // Botón inferior
+                            // Botón inferior - Corregido con navegación activa
                             TextButton(
-                              onPressed: () {},
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const PasswordScreen(),
+                                  ),
+                                );
+                              },
                               child: const Text(
                                 '¿Ya tienes cuenta? inicia sesión',
                                 style: TextStyle(
