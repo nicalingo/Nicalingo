@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -56,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10.0),
                           child: Transform.translate(
-                            offset: const Offset(0, 35), // El personaje se monta sobre la ola
+                            offset: const Offset(0, 35),
                             child: Image.asset(
                               'assets/images/coco_feliz.png',
                               fit: BoxFit.contain,
@@ -98,13 +98,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
                             
-                            // Input de Correo Electrónico Redondeado
+                            // Input de Correo Electrónico
                             Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withAlpha(25), // Alternativa limpia a .withOpacity
+                                    color: Colors.black.withAlpha(25),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
                                   ),
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
                             
-                            // Botón Continuar Celeste Redondeado
+                            // Botón Continuar Celeste con Navegación Activa
                             SizedBox(
                               width: size.width * 0.55,
                               child: Container(
@@ -176,7 +176,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   onPressed: () {
                                     if (_formKey.currentState!.validate()) {
-                                      // Aquí irá la lógica de navegación más adelante
+                                      // Si el correo es válido, salta a la pantalla de registro
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const RegisterScreen(),
+                                        ),
+                                      );
                                     }
                                   },
                                   child: const Text(
@@ -206,7 +212,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // Google redondo plano
                                 GestureDetector(
                                   onTap: () {},
                                   child: Container(
@@ -225,7 +230,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 25),
-                                // Facebook con esquinas redondeadas suaves
                                 GestureDetector(
                                   onTap: () {},
                                   child: Container(
@@ -247,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const Spacer(),
                             
-                            // Botón inferior para ir a iniciar sesión
+                            // Botón inferior
                             TextButton(
                               onPressed: () {},
                               child: const Text(
