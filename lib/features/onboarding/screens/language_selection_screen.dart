@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/home/screens/home_map.dart';
 
 class LanguageSelectionScreen extends StatefulWidget {
   const LanguageSelectionScreen({super.key});
@@ -156,7 +157,13 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                     onPressed: _selectedLanguage == null 
                         ? null 
                         : () {
-                            // Lógica de navegación o guardado del idioma seleccionado
+                            // Navegación añadida para ir al mapa de niveles
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HomeMapScreen(),
+                              ),
+                            );
                           },
                     child: const Text(
                       'Continuar',
