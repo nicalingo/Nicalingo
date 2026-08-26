@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/onboarding/screens/language_selection_screen.dart';
 
 class PasswordScreen extends StatefulWidget {
   const PasswordScreen({super.key});
@@ -19,6 +21,54 @@ class _PasswordScreenState extends State<PasswordScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (_formKey.currentState!.validate()) {
+      // Mostramos un indicador de carga mientras conecta con Supabase
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        // Autenticación real con Supabase Auth
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        if (!mounted) return;
+        // Cerramos el indicador de carga
+        Navigator.pop(context);
+
+        if (!mounted) return;
+        // Navegamos a la pantalla de selección de idiomas tras el éxito
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LanguageSelectionScreen(),
+          ),
+        );
+
+      } catch (e) {
+        if (!mounted) return;
+        // Cerramos el indicador de carga
+        Navigator.pop(context);
+
+        if (!mounted) return;
+        // Mostramos el error en caso de que las credenciales sean incorrectas
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al iniciar sesión: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -153,11 +203,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   elevation: 0,
                                 ),
-                                onPressed: () {
-                                  if (_formKey.currentState!.validate()) {
-                                    // Lógica de autenticación
-                                  }
-                                },
+                                onPressed: _handleLogin,
                                 child: const Text(
                                   'Iniciar sesión',
                                   style: TextStyle(

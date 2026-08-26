@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/register_screen.dart'; // Import de la pantalla de registro[cite: 3]
-import 'package:nicalingo/features/auth/screens/password_screen.dart'; // ¡Agregado el import para iniciar sesión!
+import 'package:nicalingo/features/auth/screens/register_screen.dart';
+import 'package:nicalingo/features/auth/screens/password_screen.dart'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

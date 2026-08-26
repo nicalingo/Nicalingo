@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/onboarding/screens/language_selection_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final String email; // Recibe el correo ingresado en el login
+  final String email;
 
   const RegisterScreen({super.key, required this.email});
 
@@ -17,14 +19,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _acceptTerms = false;
 
-  // Variables para alternar la visibilidad de las contraseñas
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
   @override
   void initState() {
     super.initState();
-    // Carga automáticamente el correo traído del login
     _emailController.text = widget.email;
   }
 
@@ -36,12 +36,71 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  // Función para registrarse en Supabase
+  Future<void> _handleSignUp() async {
+    if (!_acceptTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes aceptar los términos y condiciones'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_formKey.currentState!.validate()) {
+      // Mostrar indicador de carga
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        // Registro en Supabase Auth
+        // Gracias a tu trigger SQL, esto creará automáticamente el registro en public.profiles[cite: 6]
+        await Supabase.instance.client.auth.signUp(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        if (!mounted) return;
+        // Cerrar indicador de carga
+        Navigator.pop(context);
+
+        if (!mounted) return;
+        // Navegar hacia la selección de idioma al completarse el registro[cite: 6]
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LanguageSelectionScreen(),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        // Cerrar indicador de carga
+        Navigator.pop(context);
+
+        if (!mounted) return;
+        // Mostrar error devuelto por Supabase[cite: 6]
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al registrarse: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue, // Fondo azul para la parte superior
+      backgroundColor: AppColors.primaryBlue, // Fondo azul para la parte superior[cite: 6]
       body: SingleChildScrollView(
         child: SizedBox(
           height: size.height,
@@ -59,7 +118,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(top: 15.0, left: 20.0, right: 20.0),
                           child: Image.asset(
-                            'assets/images/coco_espada.png', // Tu asset corregido
+                            'assets/images/coco_espada.png', // Tu asset corregido[cite: 6]
                             fit: BoxFit.contain,
                             alignment: Alignment.bottomCenter,
                           ),
@@ -89,7 +148,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   decoration: const BoxDecoration(
                     color: AppColors.primaryYellow,
                     borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(55), // Curva pronunciada del Figma
+                      top: Radius.circular(55), // Curva pronunciada del Figma[cite: 6]
                     ),
                   ),
                   child: Padding(
@@ -127,7 +186,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               },
                             ),
                             validator: (value) {
-                              if (value == null || value.isEmpty) return 'Ingresa tu contraseña';
+                              if (value == null || value.length < 6) {
+                                return 'Mínimo 6 caracteres';
+                              }
                               return null;
                             },
                           ),
@@ -207,7 +268,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF34B3E4), // Celeste del login
+                                  backgroundColor: const Color(0xFF34B3E4), // Celeste del login[cite: 6]
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
@@ -215,11 +276,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   elevation: 0,
                                 ),
-                                onPressed: () {
-                                  if (_formKey.currentState!.validate() && _acceptTerms) {
-                                    // Lógica para registrar usuario en backend/firebase
-                                  }
-                                },
+                                onPressed: _handleSignUp,
                                 child: const Text(
                                   'Registrarme',
                                   style: TextStyle(
@@ -269,7 +326,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
-        textAlign: TextAlign.center, // Texto centrado
+        textAlign: TextAlign.center, // Texto centrado[cite: 6]
         style: const TextStyle(color: Colors.black87, fontFamily: 'Inter', fontSize: 14),
         decoration: InputDecoration(
           hintText: hintText,
@@ -277,7 +334,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           fillColor: Colors.white,
           filled: true,
           suffixIcon: suffixIcon,
-          // Crea un contrapeso invisible en el lado izquierdo para que el texto siga centrado al llevar ojito
+          // Crea un contrapeso invisible en el lado izquierdo para que el texto siga centrado al llevar ojito[cite: 6]
           prefixIcon: suffixIcon != null 
               ? const Visibility(
                   visible: false, 
