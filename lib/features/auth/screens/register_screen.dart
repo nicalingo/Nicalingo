@@ -60,7 +60,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       try {
         // Registro en Supabase Auth
-        // Gracias a tu trigger SQL, esto creará automáticamente el registro en public.profiles[cite: 6]
+        // Gracias a trigger SQL, esto creará automáticamente el registro en public.profiles[cite: 6]
         await Supabase.instance.client.auth.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),

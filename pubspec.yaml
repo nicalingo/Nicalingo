@@ -30,6 +30,9 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/Iconos/
+    - assets/images/Iconos/Icon_niveles/
+    - assets/images/Iconos/Icon_barra/
 
   fonts:
     - family: Noot

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/onboarding/screens/language_selection_screen.dart';
+// Importamos la pantalla del mapa en lugar del selector de idiomas
+import 'package:nicalingo/features/home/screens/home_map.dart';
 
 class PasswordScreen extends StatefulWidget {
   const PasswordScreen({super.key});
@@ -46,11 +47,11 @@ class _PasswordScreenState extends State<PasswordScreen> {
         Navigator.pop(context);
 
         if (!mounted) return;
-        // Navegamos a la pantalla de selección de idiomas tras el éxito
+        // CORRECCIÓN: Navegamos directamente al HomeMapScreen tras el éxito
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const LanguageSelectionScreen(),
+            builder: (context) => const HomeMapScreen(),
           ),
         );
 
