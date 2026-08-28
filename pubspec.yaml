@@ -37,7 +37,7 @@ flutter:
   fonts:
     - family: Noot
       fonts:
-        - asset: assets/fonts/noot.ttf
+        - asset: assets/fonts/Noot.otf
     - family: Inter
       fonts:
-        - asset: assets/fonts/inter.ttf
+        - asset: assets/fonts/Inter.ttf
