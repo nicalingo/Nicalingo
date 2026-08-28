@@ -61,7 +61,6 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 50),
             
-            // Ruedita de carga
             const CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
               strokeWidth: 4.0,

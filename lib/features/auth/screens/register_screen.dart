@@ -49,7 +49,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (_formKey.currentState!.validate()) {
-      // Mostrar indicador de carga
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -60,18 +59,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       try {
         // Registro en Supabase Auth
-        // Gracias a trigger SQL, esto creará automáticamente el registro en public.profiles[cite: 6]
+        //esto creará automáticamente el registro
         await Supabase.instance.client.auth.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
 
         if (!mounted) return;
-        // Cerrar indicador de carga
         Navigator.pop(context);
 
         if (!mounted) return;
-        // Navegar hacia la selección de idioma al completarse el registro[cite: 6]
+        // Navegar hacia la selección de idioma
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -80,11 +78,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        // Cerrar indicador de carga
         Navigator.pop(context);
 
         if (!mounted) return;
-        // Mostrar error devuelto por Supabase[cite: 6]
+        // Mostrar error devuelto por Supabase
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al registrarse: ${e.toString()}'),
@@ -100,13 +97,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue, // Fondo azul para la parte superior[cite: 6]
+      backgroundColor: AppColors.primaryBlue, 
       body: SingleChildScrollView(
         child: SizedBox(
           height: size.height,
           child: Column(
             children: [
-              // Parte superior: Personaje con espada y texto
+              // Parte superior
               Expanded(
                 flex: 8,
                 child: SafeArea(
@@ -118,7 +115,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(top: 15.0, left: 20.0, right: 20.0),
                           child: Image.asset(
-                            'assets/images/coco_espada.png', // Tu asset corregido[cite: 6]
+                            'assets/images/coco_espada.png',
                             fit: BoxFit.contain,
                             alignment: Alignment.bottomCenter,
                           ),
@@ -140,7 +137,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
 
-              // Parte inferior: Contenedor Amarillo con bordes redondeados tipo carta
+              // Parte inferior
               Expanded(
                 flex: 11,
                 child: Container(
@@ -148,7 +145,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   decoration: const BoxDecoration(
                     color: AppColors.primaryYellow,
                     borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(55), // Curva pronunciada del Figma[cite: 6]
+                      top: Radius.circular(55),
                     ),
                   ),
                   child: Padding(
@@ -169,7 +166,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 15),
 
-                          // 2. Campo Contraseña (Con botón de ojito)
+                          // 2. Campo Contraseña
                           _buildRoundedInputField(
                             controller: _passwordController,
                             hintText: 'contraseña1234*',
@@ -194,7 +191,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 15),
 
-                          // 3. Campo Confirmar Contraseña (Con botón de ojito independiente)
+                          // 3. Campo Confirmar Contraseña 
                           _buildRoundedInputField(
                             controller: _confirmPasswordController,
                             hintText: 'contraseña1234*',
@@ -219,7 +216,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const SizedBox(height: 20),
 
-                          // Checkbox de Términos y Condiciones
                           Row(
                             children: [
                               SizedBox(
@@ -252,7 +248,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           const Spacer(),
 
-                          // Botón Registrarme Celeste
                           SizedBox(
                             width: size.width * 0.55,
                             child: Container(
@@ -302,7 +297,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Helper optimizado y corregido para los Inputs de Texto
+  // Helper
   Widget _buildRoundedInputField({
     required TextEditingController controller,
     required String hintText,
@@ -326,7 +321,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
-        textAlign: TextAlign.center, // Texto centrado[cite: 6]
+        textAlign: TextAlign.center,
         style: const TextStyle(color: Colors.black87, fontFamily: 'Inter', fontSize: 14),
         decoration: InputDecoration(
           hintText: hintText,
@@ -334,7 +329,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           fillColor: Colors.white,
           filled: true,
           suffixIcon: suffixIcon,
-          // Crea un contrapeso invisible en el lado izquierdo para que el texto siga centrado al llevar ojito[cite: 6]
           prefixIcon: suffixIcon != null 
               ? const Visibility(
                   visible: false, 

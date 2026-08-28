@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Importante para usar Supabase
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_map.dart';
 
@@ -13,6 +14,9 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   // Idioma seleccionado actualmente
   String? _selectedLanguage;
 
+  // Estado de carga para evitar múltiples clics mientras guarda en la BD
+  bool _isLoading = false;
+
   // Lista de los 6 idiomas indígenas y comunitarios de Nicaragua
   final List<String> _languages = [
     'Miskito',
@@ -22,6 +26,73 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     'Rama',
     'Ulwa',
   ];
+
+  // Función para guardar el idioma seleccionado en Supabase
+  Future<void> _saveSelectedLanguage() async {
+    if (_selectedLanguage == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+
+      if (user == null) {
+        throw 'No hay un usuario autenticado.';
+      }
+
+      // 1. Obtener el 'id' del idioma seleccionado en la tabla 'languages'
+      final languageResponse = await supabase
+          .from('languages')
+          .select('id')
+          .eq('name', _selectedLanguage!)
+          .single();
+
+      final int languageId = languageResponse['id'];
+
+      // 2. Obtener el 'id' del Nivel 1 correspondiente a ese idioma
+      final levelResponse = await supabase
+          .from('levels')
+          .select('id')
+          .eq('language_id', languageId)
+          .eq('level_number', 1)
+          .single();
+
+      final int levelId = levelResponse['id'];
+
+      // 3. Guardar o actualizar en 'user_progress' (maneja la clave compuesta user_id + language_id)
+      await supabase.from('user_progress').upsert({
+        'user_id': user.id,
+        'language_id': languageId,
+        'current_level_id': levelId,
+        'last_activity': DateTime.now().toIso8601String(),
+      });
+
+      // 4. Si todo sale bien, navegar al mapa de niveles
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HomeMapScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al guardar el progreso: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,11 +161,13 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12.0),
                         child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedLanguage = language;
-                            });
-                          },
+                          onTap: _isLoading
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _selectedLanguage = language;
+                                  });
+                                },
                           child: Container(
                             height: 52,
                             alignment: Alignment.center,
@@ -154,25 +227,26 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       elevation: 0,
                     ),
-                    onPressed: _selectedLanguage == null 
+                    onPressed: (_selectedLanguage == null || _isLoading)
                         ? null 
-                        : () {
-                            // Navegación añadida para ir al mapa de niveles
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const HomeMapScreen(),
-                              ),
-                            );
-                          },
-                    child: const Text(
-                      'Continuar',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                        : _saveSelectedLanguage, // Llama a la función asíncrona de guardado
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Continuar',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                   ),
                 ),
               ),

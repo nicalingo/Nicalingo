@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-// Importamos la pantalla del mapa en lugar del selector de idiomas
 import 'package:nicalingo/features/home/screens/home_map.dart';
 
 class PasswordScreen extends StatefulWidget {
@@ -26,7 +25,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
 
   Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      // Mostramos un indicador de carga mientras conecta con Supabase
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -43,11 +41,9 @@ class _PasswordScreenState extends State<PasswordScreen> {
         );
 
         if (!mounted) return;
-        // Cerramos el indicador de carga
         Navigator.pop(context);
 
         if (!mounted) return;
-        // CORRECCIÓN: Navegamos directamente al HomeMapScreen tras el éxito
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -57,7 +53,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
 
       } catch (e) {
         if (!mounted) return;
-        // Cerramos el indicador de carga
         Navigator.pop(context);
 
         if (!mounted) return;
@@ -77,13 +72,13 @@ class _PasswordScreenState extends State<PasswordScreen> {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.primaryYellow, // Fondo amarillo superior
+      backgroundColor: AppColors.primaryYellow,
       body: SingleChildScrollView(
         child: SizedBox(
           height: size.height,
           child: Column(
             children: [
-              // Parte superior: Personaje con sombrero y "Bienvenido de vuelta"
+              // Parte superior
               Expanded(
                 flex: 9,
                 child: SafeArea(
@@ -95,7 +90,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(top: 20.0, left: 30.0, right: 30.0),
                           child: Image.asset(
-                            'assets/images/coco_feliz.png', // Tu coco con sombrerito
+                            'assets/images/coco_feliz.png',
                             fit: BoxFit.contain,
                             alignment: Alignment.bottomCenter,
                           ),
@@ -117,13 +112,13 @@ class _PasswordScreenState extends State<PasswordScreen> {
                 ),
               ),
 
-              // Parte inferior: Contenedor Azul con bordes redondeados tipo Figma
+              // Parte inferior
               Expanded(
                 flex: 11,
                 child: Container(
                   width: double.infinity,
                   decoration: const BoxDecoration(
-                    color: AppColors.primaryBlue, // Fondo azul de inicio de sesión
+                    color: AppColors.primaryBlue,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(55),
                     ),
@@ -180,7 +175,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
                           ),
                           const SizedBox(height: 25),
 
-                          // Botón Iniciar sesión Celeste
                           SizedBox(
                             width: size.width * 0.55,
                             child: Container(
@@ -196,7 +190,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF34B3E4), // Celeste Figma
+                                  backgroundColor: const Color(0xFF34B3E4),
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
@@ -218,10 +212,8 @@ class _PasswordScreenState extends State<PasswordScreen> {
                           ),
                           const Spacer(),
 
-                          // Texto inferior: ¿Olvidaste tu contraseña?
                           TextButton(
                             onPressed: () {
-                              // Lógica para recuperar contraseña
                             },
                             child: const Text(
                               '¿Olvidaste tu contraseña?',
@@ -247,7 +239,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
     );
   }
 
-  // Helper para construir los inputs de texto
   Widget _buildRoundedInputField({
     required TextEditingController controller,
     required String hintText,
@@ -279,7 +270,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
           fillColor: Colors.white,
           filled: true,
           suffixIcon: suffixIcon,
-          // Balanceador para el texto centrado con icono
           prefixIcon: suffixIcon != null 
               ? const Visibility(
                   visible: false, 

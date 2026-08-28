@@ -32,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
           height: size.height,
           child: Column(
             children: [
-              // Parte superior: Fondo Amarillo, Texto de Bienvenida y Personaje
+              // Parte superior
               Expanded(
                 flex: 9,
                 child: SafeArea(
@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              // Parte inferior: Sección Azul Estilizada (Formulario)
+              // Parte inferior
               Expanded(
                 flex: 10,
                 child: Stack(
@@ -150,8 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-                            
-                            // Botón Continuar Celeste con Navegación Activa
+
                             SizedBox(
                               width: size.width * 0.55,
                               child: Container(
@@ -177,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   onPressed: () {
                                     if (_formKey.currentState!.validate()) {
-                                      // Se envía el texto del correo a la siguiente pantalla[cite: 3]
+                                      // Se envía el texto del correo a la siguiente pantalla
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -254,7 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const Spacer(),
                             
-                            // Botón inferior - Corregido con navegación activa
+                            // Botón inferior
                             TextButton(
                               onPressed: () {
                                 Navigator.push(

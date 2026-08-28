@@ -8,7 +8,6 @@ Future<void> main() async {
   await Supabase.initialize(
     url: 'https://lughfwqpcskesetjfviv.supabase.co',
     publishableKey: 'sb_publishable_paJlhlK-qkdKXkMrmXfE3w_6GjVsbe5',
-   // authFlowType: AuthFlowType.implicit,
    authOptions: const FlutterAuthClientOptions(
     authFlowType: AuthFlowType.implicit,
   ),

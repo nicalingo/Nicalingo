@@ -9,11 +9,31 @@ class HomeMapScreen extends StatelessWidget {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1B2A6B), // Azul oscuro de fondo
+      backgroundColor: const Color(0xFF1B2A6B),
       body: SafeArea(
         child: Stack(
           children: [
-            // Contenido principal con scroll para el mapa de niveles y caminitos
+            // 0. Elementos decorativos de fondo (Coco bandera en las esquinas)
+            Positioned(
+              top: 30,
+              right: -15,
+              child: Image.asset(
+                'assets/images/Iconos/coco bandera.png',
+                width: 110,
+                height: 110,
+              ),
+            ),
+            Positioned(
+              bottom: 80,
+              left: -10,
+              child: Image.asset(
+                'assets/images/Iconos/coco bandera.png',
+                width: 100,
+                height: 100,
+              ),
+            ),
+
+            // 1. Contenido principal con scroll
             SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
@@ -21,7 +41,7 @@ class HomeMapScreen extends StatelessWidget {
                 children: [
                   const SizedBox(height: 10),
                   
-                  // 1. Tarjeta flotante superior ("Primeras palabras")
+                  // Título superior
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
                     decoration: BoxDecoration(
@@ -47,8 +67,8 @@ class HomeMapScreen extends StatelessWidget {
                   ),
                   
                   SizedBox(height: size.height * 0.04),
-
-                  // --- NIVEL 1 (Izquierda) ---
+                  
+                  // Nivel 1
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
@@ -62,10 +82,9 @@ class HomeMapScreen extends StatelessWidget {
                     ),
                   ),
 
-                  // Caminito punteado de Nivel 1 a Nivel 2
-                  _buildDottedPathCurve(isGoingRight: true),
+                  _buildDottedPathCurve(),
 
-                  // --- NIVEL 2 (Derecha) ---
+                  // Nivel 2
                   Align(
                     alignment: Alignment.centerRight,
                     child: Padding(
@@ -79,10 +98,9 @@ class HomeMapScreen extends StatelessWidget {
                     ),
                   ),
 
-                  // Caminito punteado de Nivel 2 a Nivel 3
-                  _buildDottedPathCurve(isGoingRight: false),
+                  _buildDottedPathCurve(),
 
-                  // --- NIVEL 3 (Izquierda) ---
+                  // Nivel 3
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
@@ -96,10 +114,9 @@ class HomeMapScreen extends StatelessWidget {
                     ),
                   ),
 
-                  // Caminito punteado de Nivel 3 a Nivel 4
-                  _buildDottedPathCurve(isGoingRight: true),
+                  _buildDottedPathCurve(),
 
-                  // --- NIVEL 4 (Derecha) ---
+                  // Nivel 4
                   Align(
                     alignment: Alignment.centerRight,
                     child: Padding(
@@ -113,12 +130,12 @@ class HomeMapScreen extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 120), // Espacio para la barra inferior
+                  const SizedBox(height: 120),
                 ],
               ),
             ),
 
-            // 2. Barra de navegación inferior flotante con la ruta corregida (Icon_bar)
+            // 2. Barra de navegación inferior flotante
             Positioned(
               left: 20,
               right: 20,
@@ -237,8 +254,8 @@ class HomeMapScreen extends StatelessWidget {
     );
   }
 
-  // Widget para simular el caminito punteado en zigzag entre niveles
-  Widget _buildDottedPathCurve({required bool isGoingRight}) {
+  // Widget para las líneas punteadas divisorias
+  Widget _buildDottedPathCurve() {
     return SizedBox(
       height: 50,
       child: Row(
