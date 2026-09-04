@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/onboarding/screens/language_selection_screen.dart';
+// Ya no necesitamos importar LanguageSelectionScreen aquí porque el usuario debe verificar su correo primero
 
 class RegisterScreen extends StatefulWidget {
   final String email;
@@ -36,7 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // Función para registrarse en Supabase
+  // Función para registrarse en Supabase y solicitar confirmación por correo
   Future<void> _handleSignUp() async {
     if (!_acceptTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,21 +59,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       try {
         // Registro en Supabase Auth
-        //esto creará automáticamente el registro
         await Supabase.instance.client.auth.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
 
         if (!mounted) return;
-        Navigator.pop(context);
+        Navigator.pop(context); // Ocultar indicador de carga
 
         if (!mounted) return;
-        // Navegar hacia la selección de idioma
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const LanguageSelectionScreen(),
+
+        // Mostrar diálogo informativo para confirmar el correo
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('¡Verifica tu correo!'),
+            content: Text(
+              'Hemos enviado un enlace de confirmación a:\n\n${_emailController.text.trim()}\n\nPor favor, confirma tu cuenta antes de iniciar sesión.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Cierra el diálogo
+                  Navigator.pop(context); // Regresa a la pantalla anterior (Login)
+                },
+                child: const Text('Entendido'),
+              ),
+            ],
           ),
         );
       } catch (e) {
@@ -263,7 +276,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF34B3E4), // Celeste del login[cite: 6]
+                                  backgroundColor: const Color(0xFF34B3E4), 
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),

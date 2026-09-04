@@ -164,9 +164,21 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                           onTap: _isLoading
                               ? null
                               : () {
-                                  setState(() {
-                                    _selectedLanguage = language;
-                                  });
+                                  // Validación solicitada
+                                  if (language == 'Miskito') {
+                                    setState(() {
+                                      _selectedLanguage = language;
+                                    });
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Estamos trabajando para expandir nuestra libreria de idiomas (つ╥﹏╥)つ',
+                                        ),
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
+                                  }
                                 },
                           child: Container(
                             height: 52,

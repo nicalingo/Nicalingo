@@ -56,7 +56,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
         Navigator.pop(context);
 
         if (!mounted) return;
-        // Mostramos el error en caso de que las credenciales sean incorrectas
+        // error en caso de que las credenciales sean incorrectas
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al iniciar sesión: ${e.toString()}'),
