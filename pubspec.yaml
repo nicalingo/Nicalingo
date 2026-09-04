@@ -9,22 +9,35 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  font_awesome_flutter: ^11.0.0
+  supabase_flutter: ^2.17.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.8
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/images/icono_app.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/
+    - assets/images/Iconos/
+    - assets/images/Iconos/Icon_niveles/
+    - assets/images/Iconos/Icon_barra/
 
   fonts:
     - family: Noot
       fonts:
-        - asset: assets/fonts/noot.ttf
+        - asset: assets/fonts/Noot.otf
     - family: Inter
       fonts:
-        - asset: assets/fonts/inter.ttf
+        - asset: assets/fonts/Inter.ttf
