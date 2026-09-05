@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/auth/screens/register_screen.dart';
-import 'package:nicalingo/features/auth/screens/password_screen.dart'; 
+import 'package:nicalingo/features/auth/screens/password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,11 +15,80 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
     super.dispose();
+  }
+
+  // Verifica si el correo ya existe para decidir a qué pantalla redirigir
+  Future<void> _checkEmailAndNavigate() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      // Indicador de carga
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      try {
+        final email = _emailController.text.trim();
+
+        // Consulta en la tabla 'profiles' de Supabase
+        final response = await Supabase.instance.client
+            .from('profiles')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+
+        if (!mounted) return;
+        Navigator.pop(context); // Cierra el diálogo de carga
+
+        if (response != null) {
+          // El usuario YA está registrado -> Redirige a PasswordScreen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const PasswordScreen(),
+            ),
+          );
+        } else {
+          // El usuario es NUEVO -> Redirige a RegisterScreen enviando el correo
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RegisterScreen(
+                email: email,
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context); // Cierra el diálogo de carga
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al verificar el correo: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    }
   }
 
   @override
@@ -98,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-                            
+
                             // Input de Correo Electrónico
                             Container(
                               decoration: BoxDecoration(
@@ -174,19 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                     elevation: 0,
                                   ),
-                                  onPressed: () {
-                                    if (_formKey.currentState!.validate()) {
-                                      // Se envía el texto del correo a la siguiente pantalla
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => RegisterScreen(
-                                            email: _emailController.text,
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
+                                  onPressed: _isLoading ? null : _checkEmailAndNavigate,
                                   child: const Text(
                                     'Continuar',
                                     style: TextStyle(
@@ -209,7 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 15),
-                            
+
                             // Botones de Redes Sociales
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -252,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
                             const Spacer(),
-                            
+
                             // Botón inferior
                             TextButton(
                               onPressed: () {

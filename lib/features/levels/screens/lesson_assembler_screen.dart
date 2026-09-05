@@ -107,14 +107,16 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   }
 
   Widget _buildResultScreen() {
+    final bool isPerfect = totalErrorsCommitted == 0;
+
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
       body: SafeArea(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: Container(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E3A8A),
                 borderRadius: BorderRadius.circular(24),
@@ -133,38 +135,52 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                   const FaIcon(FontAwesomeIcons.trophy, size: 72, color: AppColors.primaryYellow),
                   const SizedBox(height: 24),
                   const Text(
-                    "¡Nivel Completado!",
+                    "¡NIVEL COMPLETADO!",
                     style: TextStyle(
                       fontFamily: 'Noot',
                       color: Colors.white,
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     "Has completado ${widget.levelTitle}",
-                    style: const TextStyle(fontFamily: 'Inter', color: Colors.white70, fontSize: 16),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      color: Colors.white70,
+                      fontSize: 16,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
+
+                  // Fila de métricas adaptables sin overflow de píxeles
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _metricBadge(
-                        icon: FontAwesomeIcons.star,
-                        label: "+$accumulatedXp XP",
-                        color: AppColors.primaryYellow,
+                      Expanded(
+                        child: _metricBadge(
+                          icon: FontAwesomeIcons.star,
+                          label: "+$accumulatedXp XP",
+                          color: AppColors.primaryYellow,
+                        ),
                       ),
-                      _metricBadge(
-                        icon: FontAwesomeIcons.circleXmark,
-                        label: "$totalErrorsCommitted Errores",
-                        color: Colors.redAccent,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _metricBadge(
+                          icon: isPerfect ? FontAwesomeIcons.circleCheck : FontAwesomeIcons.circleXmark,
+                          label: isPerfect
+                              ? "0 Errores"
+                              : "$totalErrorsCommitted ${totalErrorsCommitted == 1 ? 'Error' : 'Errores'}",
+                          color: isPerfect ? const Color(0xFF4ADE80) : const Color(0xFFFF5252),
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 40),
+
+                  const SizedBox(height: 36),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -175,6 +191,7 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
+                        elevation: 0,
                       ),
                       onPressed: isSaving
                           ? null
@@ -182,10 +199,21 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                               Navigator.pop(context, true);
                             },
                       child: isSaving
-                          ? const CircularProgressIndicator(color: Colors.black87)
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.black87,
+                              ),
+                            )
                           : const Text(
-                              "Continuar al Mapa",
-                              style: TextStyle(fontFamily: 'Noot', fontSize: 18, fontWeight: FontWeight.bold),
+                              "CONTINUAR AL MAPA",
+                              style: TextStyle(
+                                fontFamily: 'Noot',
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                     ),
                   ),
@@ -200,20 +228,29 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
 
   Widget _metricBadge({required dynamic icon, required String label, required Color color}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        children: [
-          FaIcon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(fontFamily: 'Inter', color: color, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ],
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            FaIcon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
