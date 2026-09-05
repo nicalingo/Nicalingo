@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
+import 'package:nicalingo/features/home/screens/history/screen/loading_story_screen.dart';
 
 class HomeBibliotecaScreen extends StatefulWidget {
   const HomeBibliotecaScreen({super.key});
@@ -87,6 +88,56 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
         ),
       );
     }
+  }
+
+  // Widget para cargar la portada usando la URL de Supabase
+  Widget _buildStoryImage({
+    required String? imageUrl,
+    required double size,
+    required Color iconColor,
+    required IconData iconFallback,
+    double iconSize = 28,
+  }) {
+    if (imageUrl == null || imageUrl.trim().isEmpty) {
+      return Icon(iconFallback, color: iconColor, size: iconSize);
+    }
+
+    final path = imageUrl.trim();
+
+    // Si es URL web / Supabase Storage
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: iconColor,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) =>
+            Icon(iconFallback, color: iconColor, size: iconSize),
+      );
+    }
+
+    // Por si en algún momento colocas un asset local
+    return Image.asset(
+      path,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) =>
+          Icon(iconFallback, color: iconColor, size: iconSize),
+    );
   }
 
   @override
@@ -214,6 +265,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Tarjeta Principal (Destacada)
                             Container(
                               height: 130,
                               decoration: BoxDecoration(
@@ -249,19 +301,32 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.primaryYellow,
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: const Text(
-                                              "Iniciar",
-                                              style: TextStyle(
-                                                fontFamily: 'Inter',
-                                                color: Colors.black87,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
+                                          GestureDetector(
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => LoadingStoryScreen(
+                                                    story: stories[0],
+                                                    storyNumber: 1,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.primaryYellow,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: const Text(
+                                                "Iniciar",
+                                                style: TextStyle(
+                                                  fontFamily: 'Inter',
+                                                  color: Colors.black87,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -277,14 +342,13 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                         child: SizedBox(
                                           width: 75,
                                           height: 75,
-                                          child: stories[0]['image_asset'] != null && stories[0]['image_asset'].toString().isNotEmpty
-                                              ? Image.asset(
-                                                  stories[0]['image_asset'],
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) =>
-                                                      const Icon(Icons.menu_book, color: Colors.white, size: 36),
-                                                )
-                                              : const Icon(Icons.menu_book, color: Colors.white, size: 36),
+                                          child: _buildStoryImage(
+                                            imageUrl: stories[0]['image_asset'],
+                                            size: 75,
+                                            iconColor: Colors.white,
+                                            iconFallback: Icons.menu_book,
+                                            iconSize: 36,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -303,13 +367,13 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            // Lista de Historias
                             ListView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: stories.length,
                               itemBuilder: (context, index) {
                                 final story = stories[index];
-                                final imageAsset = story['image_asset'];
 
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 12),
@@ -331,14 +395,13 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                       child: SizedBox(
                                         width: 45,
                                         height: 45,
-                                        child: imageAsset != null && imageAsset.toString().isNotEmpty
-                                            ? Image.asset(
-                                                imageAsset,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) =>
-                                                    const Icon(Icons.auto_stories, color: Colors.black54),
-                                              )
-                                            : const Icon(Icons.auto_stories, color: Colors.black54),
+                                        child: _buildStoryImage(
+                                          imageUrl: story['image_asset'],
+                                          size: 45,
+                                          iconColor: Colors.black54,
+                                          iconFallback: Icons.auto_stories,
+                                          iconSize: 24,
+                                        ),
                                       ),
                                     ),
                                     title: Text(
@@ -361,7 +424,17 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.black54),
-                                    onTap: () {},
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => LoadingStoryScreen(
+                                            story: story,
+                                            storyNumber: index + 1,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 );
                               },
