@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   font_awesome_flutter: ^11.0.0
   supabase_flutter: ^2.17.2
+  shared_preferences: ^2.5.4
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +35,7 @@ flutter:
     - assets/images/Iconos/
     - assets/images/Iconos/Icon_niveles/
     - assets/images/Iconos/Icon_barra/
+    - assets/images/Iconos/background/
 
   fonts:
     - family: Noot
