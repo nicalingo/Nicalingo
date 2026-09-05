@@ -35,7 +35,9 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   List<String> availableWords = [];
   List<String> selectedWords = [];
 
-  Map<String, dynamic> get currentQ => widget.questions[currentQuestionIndex];
+  Map<String, dynamic> get currentQ => widget.questions.isNotEmpty 
+      ? widget.questions[currentQuestionIndex] 
+      : {};
 
   @override
   void initState() {
@@ -61,7 +63,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     correctAnswerText = '';
     selectedWords.clear();
 
-    if (widget.lessonType == 'order_phrase') {
+    if (widget.lessonType == 'order_phrase' && widget.questions.isNotEmpty) {
       final List<dynamic> options = currentQ['question_options'] ?? [];
       availableWords = options.map((o) => o['option_text'].toString()).toList();
       availableWords.shuffle();
@@ -72,16 +74,19 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     if (answered) return;
 
     final List<dynamic> options = currentQ['question_options'] ?? [];
+    
     final correctOpt = options.firstWhere(
       (o) => o['is_correct'] == true,
-      orElse: () => null,
+      orElse: () => <String, dynamic>{},
     );
 
     setState(() {
       answered = true;
       selectedOptionIndex = optionIndex;
       lastAnswerWasCorrect = isCorrect;
-      correctAnswerText = correctOpt != null ? correctOpt['option_text'] ?? '' : '';
+      correctAnswerText = (correctOpt != null && correctOpt is Map && correctOpt.isNotEmpty) 
+          ? correctOpt['option_text'] ?? '' 
+          : '';
       if (!isCorrect) {
         localErrors++;
       }
@@ -92,8 +97,19 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     if (answered) return;
 
     final List<dynamic> options = currentQ['question_options'] ?? [];
-    final String expectedPhrase = currentQ['correct_phrase'] ??
-        options.map((o) => o['option_text'].toString()).join(' ');
+    
+    String expectedPhrase = currentQ['correct_phrase'] ?? '';
+    
+    if (expectedPhrase.isEmpty) {
+      expectedPhrase = options
+          .where((o) => o['is_correct'] == true)
+          .map((o) => o['option_text'].toString())
+          .join(' ');
+      
+      if (expectedPhrase.isEmpty) {
+        expectedPhrase = options.map((o) => o['option_text'].toString()).join(' ');
+      }
+    }
 
     final String userPhrase = selectedWords.join(' ');
     final bool isCorrect = userPhrase.trim().toLowerCase() == expectedPhrase.trim().toLowerCase();
@@ -109,21 +125,35 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   void _nextQuestion() {
-    if (currentQuestionIndex < widget.questions.length - 1) {
+    if (widget.questions.isEmpty || currentQuestionIndex >= widget.questions.length - 1) {
+      widget.onLessonCompleted(localErrors);
+    } else {
       setState(() {
         currentQuestionIndex++;
         _initQuestionState();
       });
-    } else {
-      widget.onLessonCompleted(localErrors);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.lessonType == 'introduction') {
+      return _buildIntroductionView();
+    }
+
+    if (widget.questions.isEmpty) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF1B2A6B),
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () => widget.onLessonCompleted(0),
+            child: const Text("Continuar"),
+          ),
+        ),
+      );
+    }
+
     switch (widget.lessonType) {
-      case 'introduction':
-        return _buildIntroductionView();
       case 'multiple_choice':
         return _buildMultipleChoiceView();
       case 'order_phrase':
@@ -144,9 +174,9 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
       height: 130,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(25),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(30)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -161,23 +191,27 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // Barra de progreso interactiva
   Widget _buildProgressBar() {
+    final totalQ = widget.questions.isEmpty ? 1 : widget.questions.length;
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              "Pregunta ${currentQuestionIndex + 1} de ${widget.questions.length}",
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                color: Colors.white70,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Text(
+                "Pregunta ${currentQuestionIndex + 1} de $totalQ",
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 16),
                 const SizedBox(width: 4),
@@ -198,8 +232,8 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: LinearProgressIndicator(
-            value: (currentQuestionIndex + 1) / widget.questions.length,
-            backgroundColor: Colors.white.withAlpha(40),
+            value: (currentQuestionIndex + 1) / totalQ,
+            backgroundColor: Colors.white.withValues(alpha: 0.15),
             valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
             minHeight: 10,
           ),
@@ -208,7 +242,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // Panel inferior animado de feedback
   Widget _buildFeedbackBanner() {
     final isCorrect = lastAnswerWasCorrect;
     return AnimatedContainer(
@@ -221,7 +254,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(60),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -238,13 +271,15 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                 size: 28,
               ),
               const SizedBox(width: 10),
-              Text(
-                isCorrect ? "¡Excelente! Respuesta correcta" : "¡Ups! Respuesta incorrecta",
-                style: const TextStyle(
-                  fontFamily: 'Noot',
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  isCorrect ? "¡Excelente! Respuesta correcta" : "¡Ups! Respuesta incorrecta",
+                  style: const TextStyle(
+                    fontFamily: 'Noot',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
@@ -281,10 +316,9 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // 1. Vista de Introducción
   Widget _buildIntroductionView() {
-    final List<dynamic> options = currentQ['question_options'] ?? [];
-    final String? imageUrl = currentQ['image_url'];
+    final List<dynamic> options = currentQ.isNotEmpty ? (currentQ['question_options'] ?? []) : [];
+    final String? imageUrl = currentQ.isNotEmpty ? currentQ['image_url'] : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
@@ -314,61 +348,72 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
               _buildOptionalImage(imageUrl),
               const SizedBox(height: 10),
               Expanded(
-                child: ListView.builder(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: options.length,
-                  itemBuilder: (context, index) {
-                    final fullText = options[index]['option_text'] ?? '';
-                    String wordTerm = fullText;
-                    String translation = '';
+                child: options.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "¡Prepárate para esta lección!",
+                          style: TextStyle(fontFamily: 'Inter', color: Colors.white70, fontSize: 16),
+                        ),
+                      )
+                    : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: options.length,
+                        itemBuilder: (context, index) {
+                          final fullText = options[index]['option_text'] ?? '';
+                          String wordTerm = fullText;
+                          String translation = '';
 
-                    if (fullText.contains(':')) {
-                      final parts = fullText.split(':');
-                      wordTerm = parts[0].trim();
-                      translation = parts.length > 1 ? parts[1].trim() : '';
-                    }
+                          if (fullText.contains(':')) {
+                            final parts = fullText.split(':');
+                            wordTerm = parts[0].trim();
+                            translation = parts.length > 1 ? parts[1].trim() : '';
+                          }
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A8A),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: Colors.white.withAlpha(30)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(30),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            wordTerm,
-                            style: const TextStyle(
-                              fontFamily: 'Noot',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E3A8A),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          ),
-                          Text(
-                            translation,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primaryYellow,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    wordTerm,
+                                    style: const TextStyle(
+                                      fontFamily: 'Noot',
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  translation,
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.primaryYellow,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton(
@@ -392,7 +437,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // 2. Vista de Opción Múltiple
   Widget _buildMultipleChoiceView() {
     final String questionText = currentQ['question_text'] ?? '';
     final String? imageUrl = currentQ['image_url'];
@@ -436,7 +480,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                     final bool isCorrect = option['is_correct'] ?? false;
 
                     Color buttonColor = const Color(0xFF1E3A8A);
-                    Color borderColor = Colors.white.withAlpha(30);
+                    Color borderColor = Colors.white.withValues(alpha: 0.12);
 
                     if (answered) {
                       if (isCorrect) {
@@ -455,7 +499,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withAlpha(35),
+                            color: Colors.black.withValues(alpha: 0.15),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -504,7 +548,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // 3. Vista de Ordenar Frase
   Widget _buildOrderPhraseView() {
     final String questionText = currentQ['question_text'] ?? 'Ordena la frase.';
     final String? imageUrl = currentQ['image_url'];
@@ -541,7 +584,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                 padding: const EdgeInsets.all(16),
                 constraints: const BoxConstraints(minHeight: 85),
                 decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(20),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: Colors.white30),
                 ),
@@ -629,7 +672,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // 4. Vista Multimedia / Audio
   Widget _buildMultimediaView() {
     final String questionText = currentQ['question_text'] ?? 'Escucha y selecciona';
     final String? imageUrl = currentQ['image_url'];
@@ -661,7 +703,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withAlpha(60),
+                        color: Colors.black.withValues(alpha: 0.25),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -695,7 +737,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                     final bool isCorrect = option['is_correct'] ?? false;
 
                     Color buttonColor = const Color(0xFF1E3A8A);
-                    Color borderColor = Colors.white.withAlpha(30);
+                    Color borderColor = Colors.white.withValues(alpha: 0.12);
 
                     if (answered) {
                       if (isCorrect) {
@@ -714,7 +756,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withAlpha(35),
+                            color: Colors.black.withValues(alpha: 0.15),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
