@@ -62,31 +62,77 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     lastAnswerWasCorrect = false;
     correctAnswerText = '';
     selectedWords.clear();
+    availableWords.clear();
 
     if (widget.lessonType == 'order_phrase' && widget.questions.isNotEmpty) {
-      final List<dynamic> options = currentQ['question_options'] ?? [];
-      availableWords = options.map((o) => o['option_text'].toString()).toList();
-      availableWords.shuffle();
+      final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
+
+      // 1. Extraer la palabra o frase esperada de la BD de forma segura
+      String target = (currentQ['correct_phrase'] ?? '').toString().trim();
+
+      if (target.isEmpty && options.isNotEmpty) {
+        Map<String, dynamic>? foundOpt;
+        for (final opt in options) {
+          if (opt is Map && (opt['is_correct'] == true || opt['is_correct'] == 'true')) {
+            foundOpt = Map<String, dynamic>.from(opt);
+            break;
+          }
+        }
+
+        foundOpt ??= (options.first is Map) ? Map<String, dynamic>.from(options.first) : null;
+
+        if (foundOpt != null) {
+          target = (foundOpt['option_text'] ?? '').toString().trim();
+        }
+      }
+
+      if (target.isEmpty) {
+        target = (currentQ['question_text'] ?? '').toString().trim();
+      }
+
+      // 2. Normalizar: primera letra mayúscula y el resto minúsculas (ej: "Aisa")
+      if (target.isNotEmpty) {
+        target = target[0].toUpperCase() + target.substring(1).toLowerCase();
+      }
+      correctAnswerText = target;
+
+      // 3. Descomponer visualmente: por palabras si tiene espacios o letras si es una sola
+      if (target.contains(' ')) {
+        availableWords = target.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      } else {
+        availableWords = target.split('').where((c) => c.isNotEmpty).toList();
+      }
+
+      // 4. Barajar las fichas asegurando que no salgan ya resueltas
+      if (availableWords.length > 1) {
+        int attempts = 0;
+        final String originalOrder = availableWords.join('');
+        while (availableWords.join('') == originalOrder && attempts < 10) {
+          availableWords.shuffle();
+          attempts++;
+        }
+      }
     }
   }
 
   void _handleAnswerSelection(bool isCorrect, int optionIndex) {
     if (answered) return;
 
-    final List<dynamic> options = currentQ['question_options'] ?? [];
+    final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
     
-    final correctOpt = options.firstWhere(
-      (o) => o['is_correct'] == true,
-      orElse: () => <String, dynamic>{},
-    );
+    Map<String, dynamic>? correctOpt;
+    for (final opt in options) {
+      if (opt is Map && (opt['is_correct'] == true || opt['is_correct'] == 'true')) {
+        correctOpt = Map<String, dynamic>.from(opt);
+        break;
+      }
+    }
 
     setState(() {
       answered = true;
       selectedOptionIndex = optionIndex;
       lastAnswerWasCorrect = isCorrect;
-      correctAnswerText = (correctOpt != null && correctOpt is Map && correctOpt.isNotEmpty) 
-          ? correctOpt['option_text'] ?? '' 
-          : '';
+      correctAnswerText = correctOpt?['option_text']?.toString() ?? '';
       if (!isCorrect) {
         localErrors++;
       }
@@ -94,30 +140,20 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   void _checkOrderPhrase() {
-    if (answered) return;
+    if (answered || selectedWords.isEmpty) return;
 
-    final List<dynamic> options = currentQ['question_options'] ?? [];
-    
-    String expectedPhrase = currentQ['correct_phrase'] ?? '';
-    
-    if (expectedPhrase.isEmpty) {
-      expectedPhrase = options
-          .where((o) => o['is_correct'] == true)
-          .map((o) => o['option_text'].toString())
-          .join(' ');
-      
-      if (expectedPhrase.isEmpty) {
-        expectedPhrase = options.map((o) => o['option_text'].toString()).join(' ');
-      }
-    }
+    final String separator = correctAnswerText.contains(' ') ? ' ' : '';
+    final String userResult = selectedWords.join(separator).trim();
 
-    final String userPhrase = selectedWords.join(' ');
-    final bool isCorrect = userPhrase.trim().toLowerCase() == expectedPhrase.trim().toLowerCase();
+    final String correctCapitalized = correctAnswerText.trim();
+    final String correctLowerCase = correctAnswerText.trim().toLowerCase();
+
+    // Válido tanto "Aisa" como "aisa", pero no "aisA"
+    final bool isCorrect = (userResult == correctCapitalized) || (userResult == correctLowerCase);
 
     setState(() {
       answered = true;
       lastAnswerWasCorrect = isCorrect;
-      correctAnswerText = expectedPhrase;
       if (!isCorrect) {
         localErrors++;
       }
@@ -549,13 +585,31 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Widget _buildOrderPhraseView() {
-    final String questionText = currentQ['question_text'] ?? 'Ordena la frase.';
+    final String questionText = currentQ['question_text'] ?? 'Ordena la palabra';
     final String? imageUrl = currentQ['image_url'];
+
+    // 1. Obtener la pista / traducción ("Mama")
+    final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
+    String hintText = (currentQ['word_translation'] ?? currentQ['hint'] ?? '').toString().trim();
+    if (hintText.isEmpty && options.isNotEmpty) {
+      for (final opt in options) {
+        if (opt is Map && opt['word_translation'] != null && opt['word_translation'].toString().isNotEmpty) {
+          hintText = opt['word_translation'].toString().trim();
+          break;
+        }
+      }
+    }
+    if (hintText.isEmpty) {
+      hintText = (currentQ['description'] ?? '').toString().trim();
+    }
+
+    final int cleanLength = correctAnswerText.replaceAll(' ', '').length;
+    final int targetLength = cleanLength > 0 ? cleanLength : (availableWords.isNotEmpty ? availableWords.length : 1);
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
       appBar: AppBar(
-        title: Text("${widget.lessonTitle} (Armar)", style: const TextStyle(fontFamily: 'Noot')),
+        title: Text(widget.lessonTitle, style: const TextStyle(fontFamily: 'Noot')),
         backgroundColor: const Color(0xFF1E3A8A),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -567,7 +621,9 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildProgressBar(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+
+              // TÍTULO DEL BOCETO
               Text(
                 questionText,
                 style: const TextStyle(
@@ -578,90 +634,198 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+
               _buildOptionalImage(imageUrl),
+
+              // 1. TARJETA SÓLIDA SUPERIOR CON CASILLAS / GUIONES ("----")
               Container(
-                padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(minHeight: 85),
+                height: 80,
+                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white30),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                 ),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: selectedWords.isEmpty
-                      ? [
-                          const Text(
-                            "Toca las palabras de abajo para formar la frase",
-                            style: TextStyle(fontFamily: 'Inter', color: Colors.white54, fontSize: 14),
-                          )
-                        ]
-                      : selectedWords
-                          .map(
-                            (word) => ActionChip(
-                              backgroundColor: AppColors.primaryYellow,
-                              label: Text(
-                                word,
-                                style: const TextStyle(
-                                  fontFamily: 'Inter',
-                                  color: Colors.black87,
-                                  fontWeight: FontWeight.bold,
+                child: Center(
+                  child: selectedWords.isEmpty
+                      ? Text(
+                          List.generate(targetLength, (_) => "-").join(""),
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            color: Colors.white60,
+                            fontSize: 32,
+                            letterSpacing: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(targetLength, (index) {
+                                final bool hasLetter = index < selectedWords.length;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                                  child: Text(
+                                    hasLetter ? selectedWords[index] : "-",
+                                    style: TextStyle(
+                                      fontFamily: 'Noot',
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: hasLetter ? AppColors.primaryYellow : Colors.white30,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+
+              const Spacer(),
+
+              // 2. BLOQUE INTEGRADO: PISTA ("Mama") + TECLADO DE LETRAS
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hintText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10.0),
+                      child: Text(
+                        hintText,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
+                  // Contenedor tipo tarjeta para el teclado
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Botones de letras cuadradas
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 10,
+                          alignment: WrapAlignment.center,
+                          children: List.generate(availableWords.length, (index) {
+                            final char = availableWords[index];
+                            return SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: const Color(0xFF1B2A6B),
+                                  padding: EdgeInsets.zero,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onPressed: answered || selectedWords.length >= targetLength
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          final picked = availableWords.removeAt(index);
+                                          selectedWords.add(picked);
+                                        });
+                                      },
+                                child: Text(
+                                  char,
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                              onPressed: answered
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Tecla de Backspace abajo a la derecha
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: SizedBox(
+                            width: 58,
+                            height: 42,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: answered || selectedWords.isEmpty
                                   ? null
                                   : () {
                                       setState(() {
-                                        selectedWords.remove(word);
-                                        availableWords.add(word);
+                                        final last = selectedWords.removeLast();
+                                        availableWords.add(last);
                                       });
                                     },
+                              child: const Icon(Icons.backspace_rounded, size: 22),
                             ),
-                          )
-                          .toList(),
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: availableWords
-                    .map(
-                      (word) => ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
                         ),
-                        onPressed: answered
-                          ? null
-                          : () {
-                              setState(() {
-                                availableWords.remove(word);
-                                selectedWords.add(word);
-                              });
-                            },
-                        child: Text(word, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600)),
-                      ),
-                    )
-                    .toList(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 22),
+
+              // 3. BOTÓN INFERIOR COMPROBAR ESTILO PÍLDORA
               if (!answered)
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryYellow,
                     foregroundColor: Colors.black87,
-                    minimumSize: const Size.fromHeight(54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    minimumSize: const Size.fromHeight(56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 3,
                   ),
                   onPressed: selectedWords.isEmpty ? null : _checkOrderPhrase,
                   child: const Text(
-                    "Comprobar",
-                    style: TextStyle(fontFamily: 'Noot', fontSize: 18, fontWeight: FontWeight.bold),
+                    "COMPROBAR",
+                    style: TextStyle(
+                      fontFamily: 'Noot',
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
               if (answered) _buildFeedbackBanner(),

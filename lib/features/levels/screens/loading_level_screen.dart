@@ -75,7 +75,6 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> with SingleTick
         return;
       }
 
-      // Obtener las lecciones de este nivel
       final lessonsResponse = await supabase
           .from('lessons')
           .select()
@@ -86,12 +85,10 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> with SingleTick
 
       for (var lesson in lessonsResponse) {
         final lessonId = lesson['id'];
-        final String lessonType = lesson['lesson_type'] ?? 'multiple_choice';
+        final String lessonType = (lesson['lesson_type'] ?? 'multiple_choice').toString().trim();
 
         List<Map<String, dynamic>> questionsList = [];
 
-        // CORRECCIÓN: Si es introduction, consultamos las preguntas asociadas a la lección 
-        // (ya que questions sí se relaciona con lesson_id según tu diagrama)
         final questionsResponse = await supabase
             .from('questions')
             .select()
@@ -108,12 +105,13 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> with SingleTick
 
           questionsList.add({
             ...question,
+            // Fallback de traducción heredado de la lección si la pregunta no lo trae
+            'word_translation': question['word_translation'] ?? lesson['description'],
             'question_options': optionsResponse,
           });
         }
 
-        // Si es una introducción y por diseño no tiene preguntas en la BD, 
-        // le pasamos las opciones basadas en la info de la lección para que no falle.
+        // Si es una introducción sin preguntas explícitas en BD
         if (questionsList.isEmpty && lessonType == 'introduction') {
           questionsList.add({
             'question_text': lesson['title'] ?? 'Palabras Nuevas',
@@ -127,6 +125,7 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> with SingleTick
         lessonsList.add({
           ...lesson,
           'lessonType': lessonType,
+          'lesson_type': lessonType,
           'xpReward': lesson['xp_reward'] ?? 15,
           'questions': questionsList,
         });

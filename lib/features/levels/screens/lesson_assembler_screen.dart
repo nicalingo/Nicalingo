@@ -31,14 +31,17 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   bool isFinished = false;
   bool isSaving = false;
 
-  Map<String, dynamic> get currentLesson => widget.lessonsList[currentLessonIndex];
-  List<dynamic> get questions => currentLesson['questions'] ?? [];
+  Map<String, dynamic> get currentLesson => widget.lessonsList.isNotEmpty && currentLessonIndex < widget.lessonsList.length 
+      ? widget.lessonsList[currentLessonIndex] 
+      : {};
+
+  List<dynamic> get questions => (currentLesson['questions'] as List<dynamic>?) ?? [];
 
   void _onLessonFinished({required int errorsInLesson}) {
     setState(() {
       totalErrorsCommitted += errorsInLesson;
       lessonsPassedCount++;
-      accumulatedXp += (currentLesson['xpReward'] as num? ?? 15).toInt();
+      accumulatedXp += (currentLesson['xpReward'] as num? ?? currentLesson['xp_reward'] as num? ?? 15).toInt();
     });
 
     if (currentLessonIndex < widget.lessonsList.length - 1) {
@@ -77,6 +80,33 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     }
   }
 
+  // Normalización segura para evitar desajustes con Supabase
+  String _resolveLessonType(Map<String, dynamic> lesson) {
+    final rawType = (lesson['lessonType'] ?? lesson['lesson_type'] ?? 'multiple_choice')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    switch (rawType) {
+      case 'order_phrase':
+      case 'order_word':
+      case 'order_words':
+      case 'ordenar_palabra':
+      case 'ordenar_frase':
+        return 'order_phrase';
+      case 'introduction':
+      case 'introduccion':
+        return 'introduction';
+      case 'multimedia':
+      case 'audio':
+        return 'multimedia';
+      case 'multiple_choice':
+      case 'seleccion_multiple':
+      default:
+        return 'multiple_choice';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isFinished) {
@@ -92,11 +122,11 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       );
     }
 
-    String lessonType = currentLesson['lessonType'] ?? 'multiple_choice';
+    final String resolvedLessonType = _resolveLessonType(currentLesson);
 
     return LessonTemplateContainer(
       lessonTitle: currentLesson['title'] ?? widget.levelTitle,
-      lessonType: lessonType,
+      lessonType: resolvedLessonType,
       questions: questions,
       currentIndexLesson: currentLessonIndex,
       totalLessons: widget.lessonsList.length,
@@ -157,7 +187,6 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Fila de métricas adaptables sin overflow de píxeles
                   Row(
                     children: [
                       Expanded(
