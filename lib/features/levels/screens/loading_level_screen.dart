@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:nicalingo/features/levels/screens/lesson_assembler_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/levels/screens/lesson_assembler_screen.dart';
 
 class LoadingLevelScreen extends StatefulWidget {
   final int languageId;
@@ -10,7 +11,7 @@ class LoadingLevelScreen extends StatefulWidget {
 
   const LoadingLevelScreen({
     super.key,
-    this.languageId = 1,
+    required this.languageId,
     required this.levelNumber,
     this.specificLevelId,
     required this.levelTitle,
@@ -24,17 +25,16 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> {
   @override
   void initState() {
     super.initState();
-    _loadAllLessonsForLevelAndNavigate();
+    _loadLevelDataAndNavigate();
   }
 
-  Future<void> _loadAllLessonsForLevelAndNavigate() async {
+  Future<void> _loadLevelDataAndNavigate() async {
     try {
       final supabase = Supabase.instance.client;
-      int realLevelId;
+      int targetLevelId = widget.specificLevelId ?? 0;
 
-      if (widget.specificLevelId != null) {
-        realLevelId = widget.specificLevelId!;
-      } else {
+      // 1. Si no tenemos el ID específico, lo buscamos por número e idioma
+      if (targetLevelId == 0) {
         final levelResponse = await supabase
             .from('levels')
             .select('id')
@@ -42,64 +42,85 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> {
             .eq('level_number', widget.levelNumber)
             .maybeSingle();
 
-        if (levelResponse == null) {
-          throw Exception('El Nivel ${widget.levelNumber} no está registrado.');
+        if (levelResponse != null) {
+          targetLevelId = levelResponse['id'];
         }
-        realLevelId = levelResponse['id'];
       }
 
+      if (targetLevelId == 0) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Error: No se encontró el nivel en la base de datos")),
+          );
+        }
+        return;
+      }
+
+      // 2. Obtener las lecciones de este nivel
       final lessonsResponse = await supabase
           .from('lessons')
-          .select('id, xp_reward, title, lesson_type, lesson_number')
-          .eq('level_id', realLevelId)
+          .select()
+          .eq('level_id', targetLevelId)
           .order('lesson_number', ascending: true);
 
-      final List<dynamic> lessons = lessonsResponse;
+      List<Map<String, dynamic>> lessonsList = [];
 
-      if (lessons.isEmpty) {
-        throw Exception('Este nivel aún no tiene lecciones creadas.');
-      }
+      for (var lesson in lessonsResponse) {
+        final lessonId = lesson['id'];
 
-      List<Map<String, dynamic>> enrichedLessons = [];
-
-      for (var lesson in lessons) {
-        final int lessonId = lesson['id'];
-        
+        // 3. Obtener las preguntas de cada lección
         final questionsResponse = await supabase
             .from('questions')
-            .select('id, question_text, question_options(id, option_text, is_correct)')
-            .eq('lesson_id', lessonId);
+            .select()
+            .eq('lesson_id', lessonId)
+            .order('order_number', ascending: true);
 
-        enrichedLessons.add({
-          'lessonId': lessonId,
-          'title': lesson['title'] ?? widget.levelTitle,
+        List<Map<String, dynamic>> questionsList = [];
+
+        for (var question in questionsResponse) {
+          final questionId = question['id'];
+
+          // 4. Obtener las opciones de cada pregunta
+          final optionsResponse = await supabase
+              .from('question_options')
+              .select()
+              .eq('question_id', questionId);
+
+          questionsList.add({
+            ...question,
+            'question_options': optionsResponse,
+          });
+        }
+
+        lessonsList.add({
+          ...lesson,
           'lessonType': lesson['lesson_type'] ?? 'multiple_choice',
           'xpReward': lesson['xp_reward'] ?? 15,
-          'questions': questionsResponse,
+          'questions': questionsList,
         });
       }
 
-      await Future.delayed(const Duration(seconds: 2));
-
       if (mounted) {
+        // 5. Navegamos al ensamblador de lecciones enviando explícitamente el languageId
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => LessonAssemblerScreen(
-              levelId: realLevelId,
+              levelId: targetLevelId,
               levelTitle: widget.levelTitle,
-              lessonsList: enrichedLessons,
-              currentLessonIndex: 0,
-              accumulatedXp: 0,
+              lessonsList: lessonsList,
+              languageId: widget.languageId, // <--- Aquí se inyecta el ID del idioma correctamente
             ),
           ),
         );
       }
     } catch (e) {
+      debugPrint('Error cargando los datos del nivel: $e');
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar el nivel: $e')),
+          SnackBar(content: Text("Error al cargar la lección: $e")),
         );
       }
     }
@@ -107,77 +128,30 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color backgroundColor = Color(0xFFFFEB3B);
-    const Color containerColor = Color(0xFF1E3A8A);
-
     return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: containerColor,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
+      backgroundColor: const Color(0xFF1B2A6B),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: AppColors.primaryYellow),
+            const SizedBox(height: 24),
+            Text(
+              widget.levelTitle,
+              style: const TextStyle(
+                fontFamily: 'Noot',
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "¡¡ Empecemos pues\nchavalo !!",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        height: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 48),
-                    Image.asset(
-                      'assets/images/coco loco.png',
-                      height: 180,
-                      fit: BoxFit.contain,
-                    ),
-                    const Spacer(),
-                    Column(
-                      children: [
-                        Text(
-                          widget.levelTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            minHeight: 12,
-                            backgroundColor: Colors.white.withValues(alpha: 0.3),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              backgroundColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              textAlign: TextAlign.center,
             ),
-          ),
+            const SizedBox(height: 8),
+            const Text(
+              "Preparando tu lección...",
+              style: TextStyle(fontFamily: 'Inter', color: Colors.white70, fontSize: 16),
+            ),
+          ],
         ),
       ),
     );

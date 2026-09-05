@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-// Ya no necesitamos importar LanguageSelectionScreen aquí porque el usuario debe verificar su correo primero
 
 class RegisterScreen extends StatefulWidget {
   final String email;
@@ -36,7 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // Función para registrarse en Supabase y solicitar confirmación por correo
+  // Función para registrarse y guardar credenciales temporales para el Splash
   Future<void> _handleSignUp() async {
     if (!_acceptTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -58,31 +58,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       try {
-        // Registro en Supabase Auth
+        final emailText = _emailController.text.trim();
+        final passwordText = _passwordController.text.trim();
+
+        // 1. Registro en Supabase Auth
         await Supabase.instance.client.auth.signUp(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          email: emailText,
+          password: passwordText,
         );
+
+        // 2. Guardar credenciales en el archivo temporal (SharedPreferences)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('temp_email', emailText);
+        await prefs.setString('temp_password', passwordText);
+        
+        debugPrint('💾 [Register] Credenciales temporales guardadas para: $emailText');
 
         if (!mounted) return;
         Navigator.pop(context); // Ocultar indicador de carga
 
         if (!mounted) return;
 
-        // Mostrar diálogo informativo para confirmar el correo
+        // 3. Mostrar diálogo informativo indicando que revise su correo
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text('¡Verifica tu correo!'),
             content: Text(
-              'Hemos enviado un enlace de confirmación a:\n\n${_emailController.text.trim()}\n\nPor favor, confirma tu cuenta antes de iniciar sesión.',
+              'Hemos enviado un enlace de confirmación a:\n\n$emailText\n\nPor favor, ve a tu correo, confirma tu cuenta y luego regresa a abrir la aplicación.',
             ),
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(context); // Cierra el diálogo
-                  Navigator.pop(context); // Regresa a la pantalla anterior (Login)
+                  // Cierra el diálogo y regresa a la pantalla anterior o limpia la pila
+                  Navigator.pop(context); 
+                  Navigator.pop(context); 
                 },
                 child: const Text('Entendido'),
               ),
