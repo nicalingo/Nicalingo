@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/profile_capture_screen.dart';
+import 'package:nicalingo/features/auth/models/signup_flow_model.dart';
 
 class RegisterScreen extends StatefulWidget {
   final SignupFlowModel signupData;
@@ -79,23 +79,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
           });
 
           if (widget.signupData.languageId != null) {
-            final int langId = int.parse(widget.signupData.languageId!);
+            final int? langId = int.tryParse(widget.signupData.languageId!);
 
-            final levelResponse = await supabase
-                .from('levels')
-                .select('id')
-                .eq('language_id', langId)
-                .eq('level_number', 1)
-                .maybeSingle();
+            if (langId != null) {
+              final levelResponse = await supabase
+                  .from('levels')
+                  .select('id')
+                  .eq('language_id', langId)
+                  .eq('level_number', 1)
+                  .maybeSingle();
 
-            final int? levelId = levelResponse != null ? levelResponse['id'] : null;
+              final int? levelId = levelResponse != null ? levelResponse['id'] as int? : null;
 
-            await supabase.from('user_progress').upsert({
-              'user_id': user.id,
-              'language_id': langId,
-              'current_level_id': levelId,
-              'last_activity': DateTime.now().toIso8601String(),
-            });
+              await supabase.from('user_progress').upsert({
+                'user_id': user.id,
+                'language_id': langId,
+                'current_level_id': levelId,
+                'last_activity': DateTime.now().toIso8601String(),
+              });
+            }
           }
         }
 

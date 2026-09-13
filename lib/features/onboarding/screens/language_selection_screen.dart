@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/profile_capture_screen.dart';
+import 'package:nicalingo/features/auth/models/signup_flow_model.dart';
 import 'package:nicalingo/features/auth/screens/register_screen.dart';
 import 'package:nicalingo/features/home/screens/home_map.dart';
 
@@ -46,10 +46,10 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                 fit: BoxFit.contain,
               ),
               const SizedBox(height: 18),
-              Text(
+              const Text(
                 '¡Idioma en Desarrollo!',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Noot',
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -58,7 +58,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'El curso de $languageName aún no está disponible. Nuestro equipo está trabajando con la comunidad para traerlo muy pronto. (つ╥﹏╥)つ',
+                'El curso de $languageName aún no está disponible. Nuestro equipo está trabajando con la comunidad para traerlo muy pronto. (๑﹏๑//)',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontFamily: 'Inter',
@@ -139,12 +139,14 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     if (_selectedLanguage == null || _selectedLanguageId == null) return;
 
     if (widget.signupData != null) {
-      widget.signupData!.languageId = _selectedLanguageId.toString();
+      final updatedData = widget.signupData!.copyWith(
+        languageId: _selectedLanguageId.toString(),
+      );
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => RegisterScreen(
-            signupData: widget.signupData!,
+            signupData: updatedData,
           ),
         ),
       );
@@ -243,8 +245,14 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
               SizedBox(
                 height: size.height * 0.22,
                 child: Image.asset(
-                  'assets/images/coco_señalando.png',
+                  'assets/images/coco_se alando.png',
                   fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Image.asset(
+                      'assets/images/coco saludo.png',
+                      fit: BoxFit.contain,
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 10),

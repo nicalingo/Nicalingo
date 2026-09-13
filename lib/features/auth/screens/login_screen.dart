@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/auth/models/signup_flow_model.dart';
 import 'package:nicalingo/features/auth/screens/password_screen.dart'; 
 import 'package:nicalingo/features/auth/screens/splash/transition_splash_screen.dart';
 import 'package:nicalingo/features/auth/screens/profile_capture_screen.dart';
@@ -22,6 +23,15 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     super.dispose();
+  }
+
+  void _mostrarAvisoGoogle() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('El inicio con Google estará disponible próximamente.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   Future<void> _verificarCorreoYNavegar() async {
@@ -277,7 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 GestureDetector(
-                                  onTap: () {},
+                                  onTap: _mostrarAvisoGoogle,
                                   child: Container(
                                     width: 44,
                                     height: 44,
