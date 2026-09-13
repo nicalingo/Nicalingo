@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'package:nicalingo/features/auth/screens/profile_capture_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  final String email;
+  final SignupFlowModel signupData;
 
-  const RegisterScreen({super.key, required this.email});
+  const RegisterScreen({super.key, required this.signupData});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -25,7 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _emailController.text = widget.email;
+    _emailController.text = widget.signupData.email;
   }
 
   @override
@@ -36,7 +37,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // Función para registrarse y guardar credenciales temporales para el Splash
   Future<void> _handleSignUp() async {
     if (!_acceptTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -58,28 +58,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       try {
-        final emailText = _emailController.text.trim();
+        final emailText = widget.signupData.email;
         final passwordText = _passwordController.text.trim();
+        final supabase = Supabase.instance.client;
 
-        // 1. Registro en Supabase Auth
-        await Supabase.instance.client.auth.signUp(
+        final AuthResponse authResponse = await supabase.auth.signUp(
           email: emailText,
           password: passwordText,
         );
 
-        // 2. Guardar credenciales en el archivo temporal (SharedPreferences)
+        final user = authResponse.user;
+
+        if (user != null) {
+          await supabase.from('profiles').upsert({
+            'id': user.id,
+            'email': emailText,
+            'nickname': widget.signupData.nickname,
+            'avatar_url': widget.signupData.avatarUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+
+          if (widget.signupData.languageId != null) {
+            final int langId = int.parse(widget.signupData.languageId!);
+
+            final levelResponse = await supabase
+                .from('levels')
+                .select('id')
+                .eq('language_id', langId)
+                .eq('level_number', 1)
+                .maybeSingle();
+
+            final int? levelId = levelResponse != null ? levelResponse['id'] : null;
+
+            await supabase.from('user_progress').upsert({
+              'user_id': user.id,
+              'language_id': langId,
+              'current_level_id': levelId,
+              'last_activity': DateTime.now().toIso8601String(),
+            });
+          }
+        }
+
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('temp_email', emailText);
         await prefs.setString('temp_password', passwordText);
-        
-        debugPrint('💾 [Register] Credenciales temporales guardadas para: $emailText');
 
         if (!mounted) return;
-        Navigator.pop(context); // Ocultar indicador de carga
+        Navigator.pop(context);
 
-        if (!mounted) return;
-
-        // 3. Mostrar diálogo informativo indicando que revise su correo
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -91,9 +117,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             actions: [
               TextButton(
                 onPressed: () {
-                  // Cierra el diálogo y regresa a la pantalla anterior o limpia la pila
-                  Navigator.pop(context); 
-                  Navigator.pop(context); 
+                  Navigator.of(context).popUntil((route) => route.isFirst);
                 },
                 child: const Text('Entendido'),
               ),
@@ -104,8 +128,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (!mounted) return;
         Navigator.pop(context);
 
-        if (!mounted) return;
-        // Mostrar error devuelto por Supabase
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al registrarse: ${e.toString()}'),
@@ -127,7 +149,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           height: size.height,
           child: Column(
             children: [
-              // Parte superior
               Expanded(
                 flex: 8,
                 child: SafeArea(
@@ -160,8 +181,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
               ),
-
-              // Parte inferior
               Expanded(
                 flex: 11,
                 child: Container(
@@ -178,10 +197,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       key: _formKey,
                       child: Column(
                         children: [
-                          // 1. Campo Correo electrónico
                           _buildRoundedInputField(
                             controller: _emailController,
                             hintText: 'correoelectronico@gmail.com',
+                            enabled: false,
                             keyboardType: TextInputType.emailAddress,
                             validator: (value) {
                               if (value == null || value.isEmpty) return 'Ingresa tu correo';
@@ -189,8 +208,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                           const SizedBox(height: 15),
-
-                          // 2. Campo Contraseña
                           _buildRoundedInputField(
                             controller: _passwordController,
                             hintText: 'contraseña1234*',
@@ -214,8 +231,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                           const SizedBox(height: 15),
-
-                          // 3. Campo Confirmar Contraseña 
                           _buildRoundedInputField(
                             controller: _confirmPasswordController,
                             hintText: 'contraseña1234*',
@@ -239,7 +254,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                           const SizedBox(height: 20),
-
                           Row(
                             children: [
                               SizedBox(
@@ -271,7 +285,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ],
                           ),
                           const Spacer(),
-
                           SizedBox(
                             width: size.width * 0.55,
                             child: Container(
@@ -321,11 +334,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Helper
   Widget _buildRoundedInputField({
     required TextEditingController controller,
     required String hintText,
     bool obscureText = false,
+    bool enabled = true,
     Widget? suffixIcon,
     TextInputType keyboardType = TextInputType.text,
     required String? Function(String?) validator,
@@ -343,6 +356,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       child: TextFormField(
         controller: controller,
+        enabled: enabled,
         obscureText: obscureText,
         keyboardType: keyboardType,
         textAlign: TextAlign.center,

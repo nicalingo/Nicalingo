@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
-import 'package:nicalingo/features/auth/screens/register_screen.dart';
-import 'package:nicalingo/features/auth/screens/password_screen.dart';
+import 'package:nicalingo/features/auth/screens/password_screen.dart'; 
+import 'package:nicalingo/features/auth/screens/splash/transition_splash_screen.dart';
+import 'package:nicalingo/features/auth/screens/profile_capture_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,70 +24,72 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Verifica si el correo ya existe para decidir a qué pantalla redirigir
-  Future<void> _checkEmailAndNavigate() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+  Future<void> _verificarCorreoYNavegar() async {
+    if (!_formKey.currentState!.validate()) return;
 
-      // Indicador de carga
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+    setState(() {
+      _isLoading = true;
+    });
 
-      try {
-        final email = _emailController.text.trim();
+    final email = _emailController.text.trim();
 
-        // Consulta en la tabla 'profiles' de Supabase
-        final response = await Supabase.instance.client
-            .from('profiles')
-            .select('email')
-            .eq('email', email)
-            .maybeSingle();
+    try {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select('email')
+          .eq('email', email)
+          .maybeSingle();
 
-        if (!mounted) return;
-        Navigator.pop(context); // Cierra el diálogo de carga
+      final bool emailExisteEnBaseDeDatos = response != null;
 
-        if (response != null) {
-          // El usuario YA está registrado -> Redirige a PasswordScreen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const PasswordScreen(),
+      if (!mounted) return;
+
+      if (emailExisteEnBaseDeDatos) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TransitionSplashScreen(
+              message: '¡Bienvenido de vuelta!',
+              imagePath: 'assets/images/coco_espada.png',
+              onNavigation: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PasswordScreen()),
+                );
+              },
             ),
-          );
-        } else {
-          // El usuario es NUEVO -> Redirige a RegisterScreen enviando el correo
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RegisterScreen(
-                email: email,
-              ),
-            ),
-          );
-        }
-      } catch (e) {
-        if (!mounted) return;
-        Navigator.pop(context); // Cierra el diálogo de carga
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al verificar el correo: ${e.toString()}'),
-            backgroundColor: Colors.red,
           ),
         );
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TransitionSplashScreen(
+              message: '¡Comencemos la aventura!',
+              imagePath: 'assets/images/coco_espada.png',
+              onNavigation: () {
+                final signupData = SignupFlowModel(email: email);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileCaptureScreen(signupData: signupData),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al verificar el correo: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -102,7 +105,6 @@ class _LoginScreenState extends State<LoginScreen> {
           height: size.height,
           child: Column(
             children: [
-              // Parte superior
               Expanded(
                 flex: 9,
                 child: SafeArea(
@@ -140,8 +142,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-
-              // Parte inferior
               Expanded(
                 flex: 10,
                 child: Stack(
@@ -159,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           children: [
                             const Text(
-                              'Regístrate',
+                              'Regístrate o Inicia',
                               style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 26,
@@ -168,8 +168,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-
-                            // Input de Correo Electrónico
                             Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(30),
@@ -220,7 +218,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 20),
-
                             SizedBox(
                               width: size.width * 0.55,
                               child: Container(
@@ -244,15 +241,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                     padding: const EdgeInsets.symmetric(vertical: 12),
                                     elevation: 0,
                                   ),
-                                  onPressed: _isLoading ? null : _checkEmailAndNavigate,
-                                  child: const Text(
-                                    'Continuar',
-                                    style: TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
+                                  onPressed: _isLoading ? null : _verificarCorreoYNavegar,
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Continuar',
+                                          style: TextStyle(
+                                            fontFamily: 'Inter',
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
@@ -267,8 +273,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 15),
-
-                            // Botones de Redes Sociales
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -310,8 +314,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
                             const Spacer(),
-
-                            // Botón inferior
                             TextButton(
                               onPressed: () {
                                 Navigator.push(
