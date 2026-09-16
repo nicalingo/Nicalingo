@@ -29,6 +29,9 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   int lessonsPassedCount = 0;
   int accumulatedXp = 0;
 
+  // Historial de errores por lección para colorear la barra
+  final List<int> lessonErrorsHistory = [];
+
   bool isFinished = false;
   bool isSaving = false;
 
@@ -43,6 +46,7 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
 
   void _onLessonFinished({required int errorsInLesson}) {
     setState(() {
+      lessonErrorsHistory.add(errorsInLesson);
       totalErrorsCommitted += errorsInLesson;
       lessonsPassedCount++;
       accumulatedXp += (currentLesson['xpReward'] as num? ??
@@ -174,6 +178,7 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       questions: questions,
       currentIndexLesson: currentLessonIndex,
       totalLessons: widget.lessonsList.length,
+      lessonErrorsHistory: lessonErrorsHistory,
       onLessonCompleted: (errors) {
         _onLessonFinished(errorsInLesson: errors);
       },

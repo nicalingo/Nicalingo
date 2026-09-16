@@ -9,6 +9,7 @@ class LessonTemplateContainer extends StatefulWidget {
   final List<dynamic> questions;
   final int currentIndexLesson;
   final int totalLessons;
+  final List<int> lessonErrorsHistory;
   final Function(int errorsInLesson) onLessonCompleted;
 
   const LessonTemplateContainer({
@@ -18,6 +19,7 @@ class LessonTemplateContainer extends StatefulWidget {
     required this.questions,
     required this.currentIndexLesson,
     required this.totalLessons,
+    this.lessonErrorsHistory = const [],
     required this.onLessonCompleted,
   });
 
@@ -28,6 +30,7 @@ class LessonTemplateContainer extends StatefulWidget {
 class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   int currentQuestionIndex = 0;
   int localErrors = 0;
+  int currentLives = 5;
   int? selectedOptionIndex;
   bool answered = false;
   bool lastAnswerWasCorrect = false;
@@ -43,6 +46,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   @override
   void initState() {
     super.initState();
+    _fetchUserLives();
     _initQuestionState();
   }
 
@@ -54,6 +58,27 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
       currentQuestionIndex = 0;
       localErrors = 0;
       _initQuestionState();
+    }
+  }
+
+  Future<void> _fetchUserLives() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final data = await Supabase.instance.client
+          .from('user_progress')
+          .select('lives')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (data != null && data['lives'] != null && mounted) {
+        setState(() {
+          currentLives = (data['lives'] as num).toInt();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error obteniendo vidas: $e');
     }
   }
 
@@ -112,7 +137,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     }
   }
 
-  // Descuenta vida en Supabase de forma segura y comprueba si quedan vidas
   Future<void> _deductLifeOnMistake() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -123,10 +147,15 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         params: {'user_uuid': user.id},
       );
 
-      final int remainingLives = (remaining as int?) ?? 0;
+      final int remainingLives = (remaining as int?) ?? (currentLives > 0 ? currentLives - 1 : 0);
+
+      if (mounted) {
+        setState(() {
+          currentLives = remainingLives;
+        });
+      }
 
       if (remainingLives <= 0 && mounted) {
-        // Modal que finaliza la sesión por falta de vidas
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -150,8 +179,8 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: () {
-                  Navigator.pop(dialogCtx); // Cierra modal
-                  Navigator.pop(context, false); // Regresa al mapa indicando no completado
+                  Navigator.pop(dialogCtx);
+                  Navigator.pop(context, false);
                 },
                 child: const Text('Volver al mapa', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
               ),
@@ -284,7 +313,10 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Widget _buildProgressBar() {
-    final totalQ = widget.questions.isEmpty ? 1 : widget.questions.length;
+    final int totalQ = widget.questions.isEmpty ? 1 : widget.questions.length;
+    final int totalLessons = widget.totalLessons > 0 ? widget.totalLessons : 1;
+    final int currentLesson = widget.currentIndexLesson;
+
     return Column(
       children: [
         Row(
@@ -292,12 +324,12 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           children: [
             Expanded(
               child: Text(
-                "Pregunta ${currentQuestionIndex + 1} de $totalQ",
+                "Lección ${currentLesson + 1} de $totalLessons",
                 style: const TextStyle(
                   fontFamily: 'Inter',
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -305,14 +337,14 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 16),
-                const SizedBox(width: 4),
+                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 20),
+                const SizedBox(width: 5),
                 Text(
-                  localErrors == 0 ? "Perfecto" : "$localErrors ${localErrors == 1 ? 'error' : 'errores'}",
-                  style: TextStyle(
+                  "$currentLives",
+                  style: const TextStyle(
                     fontFamily: 'Inter',
-                    color: localErrors == 0 ? Colors.greenAccent : Colors.redAccent,
-                    fontSize: 13,
+                    color: Colors.white,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -321,14 +353,52 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           ],
         ),
         const SizedBox(height: 10),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: (currentQuestionIndex + 1) / totalQ,
-            backgroundColor: Colors.white.withValues(alpha: 0.15),
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
-            minHeight: 10,
-          ),
+        Row(
+          children: List.generate(totalLessons, (index) {
+            Color segmentColor;
+
+            if (index < currentLesson) {
+              // Lección completada: si tuvo errores en su momento se muestra roja, si no verde
+              final int pastErrors = (index < widget.lessonErrorsHistory.length)
+                  ? widget.lessonErrorsHistory[index]
+                  : 0;
+              segmentColor = pastErrors > 0 ? Colors.redAccent : Colors.greenAccent;
+            } else if (index == currentLesson) {
+              // Lección en curso:
+              // 1. Si cometió error -> Roja
+              // 2. Si completó la última pregunta sin errores -> Verde
+              // 3. Mientras esté respondiendo bien -> Amarilla
+              if (localErrors > 0) {
+                segmentColor = Colors.redAccent;
+              } else if (answered && lastAnswerWasCorrect && currentQuestionIndex >= totalQ - 1) {
+                segmentColor = Colors.greenAccent;
+              } else {
+                segmentColor = AppColors.primaryYellow;
+              }
+            } else {
+              // Lecciones futuras aún no alcanzadas
+              segmentColor = Colors.white.withValues(alpha: 0.2);
+            }
+
+            return Expanded(
+              child: Container(
+                height: 10,
+                margin: EdgeInsets.symmetric(horizontal: totalLessons > 10 ? 1.0 : 2.0),
+                decoration: BoxDecoration(
+                  color: segmentColor,
+                  borderRadius: BorderRadius.circular(5),
+                  boxShadow: [
+                    if (index == currentLesson)
+                      BoxShadow(
+                        color: segmentColor.withValues(alpha: 0.5),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ),
       ],
     );
