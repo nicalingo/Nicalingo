@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 
 class LessonTemplateContainer extends StatefulWidget {
@@ -67,7 +68,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     if (widget.lessonType == 'order_phrase' && widget.questions.isNotEmpty) {
       final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
 
-      // 1. Extraer la palabra o frase esperada de la BD de forma segura
       String target = (currentQ['correct_phrase'] ?? '').toString().trim();
 
       if (target.isEmpty && options.isNotEmpty) {
@@ -90,20 +90,17 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         target = (currentQ['question_text'] ?? '').toString().trim();
       }
 
-      // 2. Normalizar: primera letra mayúscula y el resto minúsculas (ej: "Aisa")
       if (target.isNotEmpty) {
         target = target[0].toUpperCase() + target.substring(1).toLowerCase();
       }
       correctAnswerText = target;
 
-      // 3. Descomponer visualmente: por palabras si tiene espacios o letras si es una sola
       if (target.contains(' ')) {
         availableWords = target.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
       } else {
         availableWords = target.split('').where((c) => c.isNotEmpty).toList();
       }
 
-      // 4. Barajar las fichas asegurando que no salgan ya resueltas
       if (availableWords.length > 1) {
         int attempts = 0;
         final String originalOrder = availableWords.join('');
@@ -112,6 +109,58 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           attempts++;
         }
       }
+    }
+  }
+
+  // Descuenta vida en Supabase de forma segura y comprueba si quedan vidas
+  Future<void> _deductLifeOnMistake() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final remaining = await Supabase.instance.client.rpc(
+        'deduct_life',
+        params: {'user_uuid': user.id},
+      );
+
+      final int remainingLives = (remaining as int?) ?? 0;
+
+      if (remainingLives <= 0 && mounted) {
+        // Modal que finaliza la sesión por falta de vidas
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.heart_broken, color: Colors.redAccent, size: 28),
+                SizedBox(width: 8),
+                Text('¡Te quedaste sin vidas!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: const Text(
+              'Has agotado todas tus vidas en esta lección. Espera a que se regeneren o vuelve más tarde.',
+              style: TextStyle(fontSize: 14),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryYellow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(dialogCtx); // Cierra modal
+                  Navigator.pop(context, false); // Regresa al mapa indicando no completado
+                },
+                child: const Text('Volver al mapa', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error descontando vida: $e');
     }
   }
 
@@ -137,6 +186,10 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         localErrors++;
       }
     });
+
+    if (!isCorrect) {
+      _deductLifeOnMistake();
+    }
   }
 
   void _checkOrderPhrase() {
@@ -148,7 +201,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     final String correctCapitalized = correctAnswerText.trim();
     final String correctLowerCase = correctAnswerText.trim().toLowerCase();
 
-    // Válido tanto "Aisa" como "aisa", pero no "aisA"
     final bool isCorrect = (userResult == correctCapitalized) || (userResult == correctLowerCase);
 
     setState(() {
@@ -158,6 +210,10 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         localErrors++;
       }
     });
+
+    if (!isCorrect) {
+      _deductLifeOnMistake();
+    }
   }
 
   void _nextQuestion() {
@@ -588,7 +644,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     final String questionText = currentQ['question_text'] ?? 'Ordena la palabra';
     final String? imageUrl = currentQ['image_url'];
 
-    // 1. Obtener la pista / traducción ("Mama")
     final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
     String hintText = (currentQ['word_translation'] ?? currentQ['hint'] ?? '').toString().trim();
     if (hintText.isEmpty && options.isNotEmpty) {
@@ -623,7 +678,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
               _buildProgressBar(),
               const SizedBox(height: 20),
 
-              // TÍTULO DEL BOCETO
               Text(
                 questionText,
                 style: const TextStyle(
@@ -638,7 +692,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
 
               _buildOptionalImage(imageUrl),
 
-              // 1. TARJETA SÓLIDA SUPERIOR CON CASILLAS / GUIONES ("----")
               Container(
                 height: 80,
                 width: double.infinity,
@@ -689,7 +742,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
 
               const Spacer(),
 
-              // 2. BLOQUE INTEGRADO: PISTA ("Mama") + TECLADO DE LETRAS
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -708,7 +760,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                       ),
                     ),
 
-                  // Contenedor tipo tarjeta para el teclado
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
@@ -727,7 +778,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Botones de letras cuadradas
                         Wrap(
                           spacing: 8,
                           runSpacing: 10,
@@ -769,7 +819,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                         ),
                         const SizedBox(height: 18),
 
-                        // Tecla de Backspace abajo a la derecha
                         Align(
                           alignment: Alignment.centerRight,
                           child: SizedBox(
@@ -805,7 +854,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
 
               const SizedBox(height: 22),
 
-              // 3. BOTÓN INFERIOR COMPROBAR ESTILO PÍLDORA
               if (!answered)
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(

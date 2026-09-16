@@ -1,7 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
+import 'package:nicalingo/features/home/screens/home_settings.dart';
 import 'package:nicalingo/features/home/screens/history/screen/loading_story_screen.dart';
 
 class HomeBibliotecaScreen extends StatefulWidget {
@@ -12,9 +14,9 @@ class HomeBibliotecaScreen extends StatefulWidget {
 }
 
 class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
-  int _currentIndex = 2;
+  final int _currentIndex = 2;
   
-  late final Future<List<Map<String, dynamic>>> _storiesFuture = _fetchStories();
+  late Future<List<Map<String, dynamic>>> _storiesFuture;
   List<Map<String, dynamic>> _allStories = [];
   List<Map<String, dynamic>> _filteredStories = [];
   final TextEditingController _searchController = TextEditingController();
@@ -22,6 +24,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   @override
   void initState() {
     super.initState();
+    _storiesFuture = _fetchStories();
     _searchController.addListener(_filterStories);
   }
 
@@ -39,13 +42,23 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
           .order('id', ascending: true);
 
       final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(response);
-      _allStories = stories;
-      _filteredStories = stories;
+      setState(() {
+        _allStories = stories;
+        _filteredStories = stories;
+      });
       return stories;
     } catch (e) {
       debugPrint('Error cargando historias: $e');
       return [];
     }
+  }
+
+  Future<void> _refreshStories() async {
+    _searchController.clear();
+    setState(() {
+      _storiesFuture = _fetchStories();
+    });
+    await _storiesFuture;
   }
 
   void _filterStories() {
@@ -62,7 +75,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     if (index == _currentIndex) return;
 
     if (index == 0) {
-      Navigator.push(
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => const HomePerfilScreen(),
@@ -76,21 +89,17 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
       return;
     }
 
-    setState(() {
-      _currentIndex = index;
-    });
-
-    if (index != 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Próximamente disponible"),
-          duration: Duration(seconds: 1),
+    if (index == 3) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const HomeSettingsScreen(),
         ),
       );
+      return;
     }
   }
 
-  // Widget para cargar la portada usando la URL de Supabase
   Widget _buildStoryImage({
     required String? imageUrl,
     required double size,
@@ -104,7 +113,6 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
 
     final path = imageUrl.trim();
 
-    // Si es URL web / Supabase Storage
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return Image.network(
         path,
@@ -129,7 +137,6 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
       );
     }
 
-    // Por si en algún momento colocas un asset local
     return Image.asset(
       path,
       width: size,
@@ -162,7 +169,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primaryYellow,
                     borderRadius: BorderRadius.circular(25),
-                    border: Border.all(color: Colors.white, width: 4),
+                    border: Border.all(color: AppColors.textWhite, width: 4),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withAlpha(50),
@@ -177,7 +184,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                       fontFamily: 'Inter',
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: AppColors.textDark,
                     ),
                   ),
                 ),
@@ -186,7 +193,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
@@ -213,119 +220,156 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                   child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _storiesFuture,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                      if (snapshot.connectionState == ConnectionState.waiting && _allStories.isEmpty) {
                         return const Center(child: CircularProgressIndicator(color: AppColors.primaryYellow));
                       }
 
                       final stories = _filteredStories;
 
-                      if (stories.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 30),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image.asset(
-                                  'assets/images/coco_ups.png',
-                                  width: 140,
-                                  height: 140,
-                                  fit: BoxFit.contain,
+                      return RefreshIndicator(
+                        color: AppColors.textDark,
+                        backgroundColor: AppColors.primaryYellow,
+                        onRefresh: _refreshStories,
+                        child: stories.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
                                 ),
-                                const SizedBox(height: 20),
-                                const Text(
-                                  "¡Ups!",
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  "Estamos trabajando para integrarte nuevas historias",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 15,
-                                    color: Colors.white70,
-                                  ),
-                                ),
-                                const SizedBox(height: 80),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-
-                      return SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Tarjeta Principal (Destacada)
-                            Container(
-                              height: 130,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E3A8A),
-                                borderRadius: BorderRadius.circular(24),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withAlpha(40),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
+                                children: [
+                                  SizedBox(
+                                    height: MediaQuery.of(context).size.height * 0.6,
+                                    child: Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 30),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Image.asset(
+                                              'assets/images/coco_ups.png',
+                                              width: 140,
+                                              height: 140,
+                                              fit: BoxFit.contain,
+                                            ),
+                                            const SizedBox(height: 20),
+                                            const Text(
+                                              "¡Ups!",
+                                              style: TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontSize: 22,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.textWhite,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            const Text(
+                                              "Estamos trabajando para integrarte nuevas historias",
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontSize: 15,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ],
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            stories[0]['title'] ?? '',
-                                            style: const TextStyle(
-                                              fontFamily: 'Inter',
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                              )
+                            : SingleChildScrollView(
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: BouncingScrollPhysics(),
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 20),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Tarjeta superior destacada
+                                    Container(
+                                      height: 130,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.secondarySkyBlue.withAlpha(200),
+                                        borderRadius: BorderRadius.circular(22),
+                                        border: Border.all(color: AppColors.textWhite.withAlpha(80), width: 1.8),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withAlpha(30),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
                                           ),
-                                          const SizedBox(height: 8),
-                                          GestureDetector(
-                                            onTap: () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) => LoadingStoryScreen(
-                                                    story: stories[0],
-                                                    storyNumber: 1,
+                                        ],
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 3,
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(16.0),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    stories[0]['title'] ?? '',
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Inter',
+                                                      color: AppColors.textWhite,
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
                                                   ),
-                                                ),
-                                              );
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.primaryYellow,
-                                                borderRadius: BorderRadius.circular(12),
+                                                  const SizedBox(height: 8),
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (context) => LoadingStoryScreen(
+                                                            story: stories[0],
+                                                            storyNumber: 1,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.primaryYellow,
+                                                        borderRadius: BorderRadius.circular(12),
+                                                      ),
+                                                      child: const Text(
+                                                        "Iniciar",
+                                                        style: TextStyle(
+                                                          fontFamily: 'Inter',
+                                                          color: AppColors.textDark,
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              child: const Text(
-                                                "Iniciar",
-                                                style: TextStyle(
-                                                  fontFamily: 'Inter',
-                                                  color: Colors.black87,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 12,
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Center(
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(16),
+                                                child: SizedBox(
+                                                  width: 75,
+                                                  height: 75,
+                                                  child: _buildStoryImage(
+                                                    imageUrl: stories[0]['image_asset'],
+                                                    size: 75,
+                                                    iconColor: AppColors.textWhite,
+                                                    iconFallback: Icons.menu_book,
+                                                    iconSize: 36,
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -333,115 +377,93 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                         ],
                                       ),
                                     ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Center(
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: SizedBox(
-                                          width: 75,
-                                          height: 75,
-                                          child: _buildStoryImage(
-                                            imageUrl: stories[0]['image_asset'],
-                                            size: 75,
-                                            iconColor: Colors.white,
-                                            iconFallback: Icons.menu_book,
-                                            iconSize: 36,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 25),
-                            const Text(
-                              "Continuar historias interactivas",
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            // Lista de Historias
-                            ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: stories.length,
-                              itemBuilder: (context, index) {
-                                final story = stories[index];
-
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withAlpha(20),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: SizedBox(
-                                        width: 45,
-                                        height: 45,
-                                        child: _buildStoryImage(
-                                          imageUrl: story['image_asset'],
-                                          size: 45,
-                                          iconColor: Colors.black54,
-                                          iconFallback: Icons.auto_stories,
-                                          iconSize: 24,
-                                        ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      story['title'] ?? '',
-                                      style: const TextStyle(
-                                        fontFamily: 'Inter',
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      story['description'] ?? '',
+                                    const SizedBox(height: 25),
+                                    const Text(
+                                      "Continuar historias interactivas",
                                       style: TextStyle(
                                         fontFamily: 'Inter',
-                                        fontSize: 12,
-                                        color: Colors.grey[700],
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textWhite,
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.black54),
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => LoadingStoryScreen(
-                                            story: story,
-                                            storyNumber: index + 1,
+                                    const SizedBox(height: 12),
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: stories.length,
+                                      itemBuilder: (context, index) {
+                                        final story = stories[index];
+
+                                        return Container(
+                                          margin: const EdgeInsets.only(bottom: 12),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primaryBlue.withAlpha(160),
+                                            borderRadius: BorderRadius.circular(22),
+                                            border: Border.all(color: AppColors.textWhite.withAlpha(50), width: 1.5),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withAlpha(20),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 100),
-                          ],
-                        ),
+                                          child: ListTile(
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            leading: ClipRRect(
+                                              borderRadius: BorderRadius.circular(12),
+                                              child: SizedBox(
+                                                width: 45,
+                                                height: 45,
+                                                child: _buildStoryImage(
+                                                  imageUrl: story['image_asset'],
+                                                  size: 45,
+                                                  iconColor: AppColors.textWhite,
+                                                  iconFallback: Icons.auto_stories,
+                                                  iconSize: 24,
+                                                ),
+                                              ),
+                                            ),
+                                            title: Text(
+                                              story['title'] ?? '',
+                                              style: const TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                                color: AppColors.textWhite,
+                                              ),
+                                            ),
+                                            subtitle: Text(
+                                              story['description'] ?? '',
+                                              style: const TextStyle(
+                                                fontFamily: 'Inter',
+                                                fontSize: 12,
+                                                color: Colors.white70,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textWhite),
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => LoadingStoryScreen(
+                                                    story: story,
+                                                    storyNumber: index + 1,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 100),
+                                  ],
+                                ),
+                              ),
                       );
                     },
                   ),
@@ -451,31 +473,41 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
           ),
         ],
       ),
+      // Barra inferior con efecto Liquid Glass y botón activo con efecto 3D / relieve
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 15),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.primaryYellow,
+          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
+          child: SizedBox(
+            height: 60,
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(50),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryYellow.withAlpha(240),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: AppColors.textWhite.withAlpha(220), width: 2.8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(60),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/user_icon.png', 0),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Map_icon.png', 1),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/user_icon.png', 0),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Map_icon.png', 1),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
-              ],
+              ),
             ),
           ),
         ),
@@ -488,24 +520,35 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     return GestureDetector(
       onTap: () => _onNavBarTap(index),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? AppColors.textWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
+          // Efecto 3D / relieve para el botón seleccionado
+          border: isSelected
+              ? Border.all(color: Colors.white, width: 1.5)
+              : null,
           boxShadow: isSelected
               ? [
+                  // Sombra inferior profunda simulando que está flotando (efecto 3D)
                   BoxShadow(
-                    color: Colors.black.withAlpha(20),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  )
+                    color: Colors.black.withAlpha(40),
+                    blurRadius: 6,
+                    offset: const Offset(0, 4),
+                  ),
+                  // Brillo superior sutil simulando luz directa sobre el relieve
+                  BoxShadow(
+                    color: Colors.white.withAlpha(200),
+                    blurRadius: 2,
+                    offset: const Offset(0, -1),
+                  ),
                 ]
               : [],
         ),
         child: Image.asset(
           assetPath,
-          width: 26,
-          height: 26,
+          width: 24,
+          height: 24,
           fit: BoxFit.contain,
         ),
       ),
