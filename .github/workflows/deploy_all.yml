@@ -7,6 +7,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   # ----------------------------------------------------
@@ -42,9 +48,12 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
 
   # ----------------------------------------------------
-  # JOB 2: WEB
+  # JOB 2: WEB (Compila y publica en GitHub Pages)
   # ----------------------------------------------------
   build-web:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,10 +67,10 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Compilar Web
-        run: flutter build web --release
+      - name: Compilar Web (con base-href para dominio raíz)
+        run: flutter build web --release --base-href /
 
-      - name: Comprimir Web
+      - name: Comprimir Web en ZIP para el Release
         run: zip -r nicalingo_web.zip build/web
 
       - name: Guardar Web ZIP como artefacto
@@ -69,6 +78,18 @@ jobs:
         with:
           name: web-release
           path: nicalingo_web.zip
+
+      - name: Configurar artefacto de Pages
+        uses: actions/configure-pages@v5
+
+      - name: Subir sitio a GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - name: Desplegar sitio en vivo
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   # ----------------------------------------------------
   # JOB 3: WINDOWS
@@ -90,7 +111,7 @@ jobs:
       - name: Compilar Windows
         run: flutter build windows --release
 
-      - name: Comprimir Windows
+      - name: Comprimir Windows en ZIP
         shell: pwsh
         run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath nicalingo_windows.zip
 
@@ -101,7 +122,7 @@ jobs:
           path: nicalingo_windows.zip
 
   # ----------------------------------------------------
-  # JOB 4: PUBLICAR RELEASE
+  # JOB 4: PUBLICAR RELEASE COMPLETO
   # ----------------------------------------------------
   publish-release:
     needs: [build-android, build-web, build-windows]
@@ -121,9 +142,6 @@ jobs:
         with:
           path: release-files
           merge-multiple: true
-
-      - name: Listar archivos para verificar
-        run: ls -la release-files
 
       - name: Publicar en GitHub Releases
         uses: softprops/action-gh-release@v2
