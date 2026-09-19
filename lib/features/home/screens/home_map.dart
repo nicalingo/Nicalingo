@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -6,10 +7,11 @@ import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/levels/screens/loading_level_screen.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
+import 'package:nicalingo/features/home/screens/home_settings.dart';
 
 class _PathNode {
   final String id;
-  final Offset position; 
+  final Offset position;
   final String? number;
   final String? iconPath;
   final Color color;
@@ -30,8 +32,8 @@ class _PathNode {
 }
 
 class HomeMapScreen extends StatefulWidget {
-  final int languageId; 
-  
+  final int languageId;
+
   const HomeMapScreen({super.key, this.languageId = 1});
 
   @override
@@ -42,12 +44,443 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   int _currentIndex = 1;
   String _currentHeaderTitle = "Niveles";
   List<Map<String, dynamic>> _dbLevelsCache = [];
-  
-  // Quitamos el 'final' para permitir reasignar y actualizar el Future al volver del nivel
-  late Future<List<Map<String, dynamic>>> _levelsFuture = _fetchLevelsAndProgress();
+  Map<String, dynamic>? _userProfile;
+  int _currentLives = 5;
+  int _secondsUntilNextLife = 0;
+  Timer? _countdownTimer;
+
+  late Future<List<Map<String, dynamic>>> _levelsFuture =
+      _fetchLevelsAndProgress();
 
   static const List<double> _waveXPattern = [0.26, 0.74, 0.25, 0.74];
-  final List<String> _defaultTitles = ['conectores', 'familia', 'pronombres', 'saludos'];
+  final List<String> _defaultTitles = [
+    'conectores',
+    'familia',
+    'pronombres',
+    'saludos'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserProfile();
+    _startCountdownTimer();
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startCountdownTimer() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_secondsUntilNextLife > 0) {
+        setState(() {
+          _secondsUntilNextLife--;
+        });
+      } else if (_currentLives < 5) {
+        // Cuando llega a 0 y no está lleno, vuelve a sincronizar con Supabase automáticamente
+        _fetchUserProfile();
+      }
+    });
+  }
+
+  Future<void> _refreshAllData() async {
+    await Future.wait([
+      _fetchUserProfile(),
+      (() async {
+        setState(() {
+          _levelsFuture = _fetchLevelsAndProgress();
+        });
+      })(),
+    ]);
+  }
+
+  Future<void> _fetchUserProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final livesRpc = await Supabase.instance.client.rpc(
+        'get_or_restore_lives',
+        params: {'user_uuid': user.id},
+      );
+
+      int syncedLives = 5;
+      int secondsLeft = 0;
+
+      if (livesRpc is List && livesRpc.isNotEmpty) {
+        syncedLives = (livesRpc.first['current_lives'] as int?) ?? 5;
+        secondsLeft = (livesRpc.first['seconds_until_next'] as int?) ?? 0;
+      }
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _userProfile = profile;
+          _currentLives = syncedLives;
+          _secondsUntilNextLife = secondsLeft;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando perfil o vidas: $e');
+    }
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) {
+      return 'Buenos días';
+    } else if (hour >= 12 && hour < 19) {
+      return 'Buenas tardes';
+    } else {
+      return 'Buenas noches';
+    }
+  }
+
+  String _formatTime(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _showNoLivesDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.favorite_border, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('¡Sin vidas!',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Te has quedado sin vidas para jugar este nivel.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            if (_secondsUntilNextLife > 0)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.timer_outlined,
+                        size: 18, color: Colors.black54),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Próxima vida en: ${_formatTime(_secondsUntilNextLife)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido',
+                style: TextStyle(color: Colors.black87)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLivesInfoModal() {
+    final bool isAdmin = _userProfile?['role'] == 'admin';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.favorite, color: Colors.redAccent),
+            const SizedBox(width: 8),
+            Text('Vidas ($_currentLives/5)',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_currentLives == 5)
+              const Text('¡Tus vidas están al máximo!')
+            else
+              Text(
+                  'Se regenera 1 vida cada 30 minutos.\nSiguiente vida en: ${_formatTime(_secondsUntilNextLife)}'),
+            if (isAdmin) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryYellow,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.bolt, color: Colors.black87),
+                  label: const Text(
+                    'Restablecer vidas a full',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showAdminRestoreLivesDialog();
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAdminRestoreLivesDialog() {
+    final TextEditingController passController = TextEditingController();
+    const String adminSecret = "210406";
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.healing, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text(
+              'Restablecer Vidas',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Ingresa la contraseña de administrador para restablecer las vidas al máximo (5/5).',
+              style: TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passController,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Contraseña de admin',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancelar', style: TextStyle(color: Colors.black54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryYellow,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              if (passController.text.trim() == adminSecret) {
+                Navigator.pop(context);
+                await _adminRestoreLives();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Contraseña incorrecta'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            },
+            child: const Text('Restablecer',
+                style: TextStyle(
+                    color: Colors.black87, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _adminRestoreLives() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      await Supabase.instance.client.rpc(
+        'admin_restore_user_lives',
+        params: {'user_uuid': user.id},
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentLives = 5;
+          _secondsUntilNextLife = 0;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('¡Vidas restablecidas al máximo (5/5)! ❤️'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error restableciendo vidas: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al restablecer vidas: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showAdminBypassDialog(BuildContext context, _PathNode node) {
+    final TextEditingController passController = TextEditingController();
+    const String adminSecret = "210406";
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.admin_panel_settings, color: Colors.black87),
+            SizedBox(width: 8),
+            Text(
+              'Modo Desarrollador',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Nivel: ${node.title} (ID: ${node.id})',
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passController,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Contraseña de anulación',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancelar', style: TextStyle(color: Colors.black54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryYellow,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              if (passController.text.trim() == adminSecret) {
+                Navigator.pop(context);
+                _launchLevel(node);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Contraseña incorrecta'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            },
+            child: const Text('Acceder',
+                style: TextStyle(
+                    color: Colors.black87, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _launchLevel(_PathNode node) async {
+    String loadingTitle = "Cargando ${node.title}...";
+    int levelNumber = int.tryParse(node.number ?? '1') ?? 1;
+    int? specificId = int.tryParse(node.id);
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LoadingLevelScreen(
+          languageId: widget.languageId,
+          levelNumber: levelNumber,
+          specificLevelId: specificId,
+          levelTitle: loadingTitle,
+        ),
+      ),
+    );
+
+    // Al regresar del nivel, actualiza vidas y progreso de inmediato
+    if (mounted) {
+      await _refreshAllData();
+    }
+  }
 
   void _onNavBarTap(int index) {
     if (index == _currentIndex) return;
@@ -58,7 +491,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
         MaterialPageRoute(
           builder: (context) => const HomePerfilScreen(),
         ),
-      );
+      ).then((_) => _fetchUserProfile());
       return;
     }
 
@@ -79,21 +512,20 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
       return;
     }
 
-    setState(() {
-      _currentIndex = index;
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Próximamente disponible 🚀"),
-        duration: Duration(seconds: 1),
-      ),
-    );
+    if (index == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const HomeSettingsScreen(),
+        ),
+      ).then((_) => _fetchUserProfile());
+      return;
+    }
   }
 
   void _handleScrollUpdate(ScrollNotification notification) {
     if (_dbLevelsCache.isEmpty) return;
-    
+
     final scrollOffset = notification.metrics.pixels;
     final targetY = scrollOffset + 120.0;
 
@@ -152,17 +584,36 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
 
       if (levelsResponse.isEmpty) return [];
 
-      Set<int> completedLevelIds = {};
+      Set<int> completedLevelKeys = {};
+      int maxCurrentLevel = 1;
+
       if (userId != null) {
         try {
           final progressResponse = await Supabase.instance.client
               .from('user_progress')
-              .select('level_id, is_completed')
-              .eq('user_id', userId);
+              .select('level_id, current_level_id, is_completed')
+              .eq('user_id', userId)
+              .eq('language_id', widget.languageId);
 
           for (var p in progressResponse) {
-            if (p['is_completed'] == true) {
-              completedLevelIds.add(p['level_id']);
+            final isDone = p['is_completed'] == true ||
+                p['is_completed'] == 'true' ||
+                p['is_completed'] == 1;
+
+            if (isDone) {
+              if (p['level_id'] != null) {
+                final parsedId = int.tryParse(p['level_id'].toString());
+                if (parsedId != null) completedLevelKeys.add(parsedId);
+              }
+              if (p['current_level_id'] != null) {
+                final parsedCurr = int.tryParse(p['current_level_id'].toString());
+                if (parsedCurr != null) {
+                  completedLevelKeys.add(parsedCurr);
+                  if (parsedCurr > maxCurrentLevel) {
+                    maxCurrentLevel = parsedCurr;
+                  }
+                }
+              }
             }
           }
         } catch (e) {
@@ -174,23 +625,38 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
 
       for (int i = 0; i < levelsResponse.length; i++) {
         final level = levelsResponse[i];
-        final levelPkId = level['id'];
-        
+        final int levelPkId = int.tryParse(level['id'].toString()) ?? 0;
+        final int levelNum =
+            int.tryParse(level['level_number'].toString()) ?? (i + 1);
+
         final lessonResponse = await Supabase.instance.client
             .from('lessons')
             .select('title')
             .eq('level_id', levelPkId)
-            .eq('lesson_number', 1)
+            .order('lesson_number', ascending: true)
+            .limit(1)
             .maybeSingle();
 
-        String lessonTitle = lessonResponse?['title'] ?? level['title'] ?? 'Nivel ${level['level_number']}';
-        
+        String lessonTitle = lessonResponse?['title'] ??
+            level['title'] ??
+            'Nivel $levelNum';
+
         bool isUnlocked = false;
+
         if (i == 0) {
           isUnlocked = true;
         } else {
-          final prevLevelPkId = levelsResponse[i - 1]['id'];
-          if (completedLevelIds.contains(prevLevelPkId)) {
+          final prevLevel = levelsResponse[i - 1];
+          final int prevPkId = int.tryParse(prevLevel['id'].toString()) ?? 0;
+          final int prevNum =
+              int.tryParse(prevLevel['level_number'].toString()) ?? i;
+
+          final bool prevIsDone = completedLevelKeys.contains(prevPkId) ||
+              completedLevelKeys.contains(prevNum);
+          final bool currentIsDone = completedLevelKeys.contains(levelPkId) ||
+              completedLevelKeys.contains(levelNum);
+
+          if (prevIsDone || currentIsDone || levelNum <= (maxCurrentLevel + 1) || levelPkId <= (maxCurrentLevel + 1)) {
             isUnlocked = true;
           }
         }
@@ -204,7 +670,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
 
       return enrichedLevels;
     } catch (e) {
-      debugPrint('Error cargando niveles: $e');
+      debugPrint('Error en _fetchLevelsAndProgress: $e');
       return [];
     }
   }
@@ -212,9 +678,12 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final nickname = _userProfile?['nickname'] ?? 'NicaLingo';
+    final avatarUrl = _userProfile?['avatar_url'];
+    final streak = _userProfile?['streak'] ?? 0;
 
     return Scaffold(
-      extendBody: true, 
+      extendBody: true,
       body: Stack(
         children: [
           Positioned.fill(
@@ -224,12 +693,14 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             ),
           ),
           SafeArea(
-            bottom: false, 
+            bottom: false,
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _levelsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primaryYellow));
+                  return const Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primaryYellow));
                 }
 
                 final dbLevels = snapshot.data ?? [];
@@ -247,7 +718,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
 
                 int totalLevels = dbLevels.isNotEmpty ? dbLevels.length : 4;
                 const double verticalSpacing = 130.0;
-                double dynamicMapHeight = max(size.height * 0.8, (totalLevels * verticalSpacing) + 200.0);
+                double dynamicMapHeight = max(
+                    size.height * 0.8, (totalLevels * verticalSpacing) + 200.0);
 
                 List<_PathNode> pathNodes = [];
                 for (int i = 0; i < dbLevels.length; i++) {
@@ -265,9 +737,13 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                     const Color(0xFFFF6622),
                     const Color(0xFFFF9900),
                   ];
-                  
-                  final nodeColor = isUnlocked ? colors[i % colors.length] : Colors.grey.shade600;
-                  final ringColor = isUnlocked ? ((i == 0) ? const Color(0xFF8FE388) : Colors.white) : Colors.grey.shade400;
+
+                  final nodeColor = isUnlocked
+                      ? colors[i % colors.length]
+                      : Colors.grey.shade600;
+                  final ringColor = isUnlocked
+                      ? ((i == 0) ? const Color(0xFF8FE388) : Colors.white)
+                      : Colors.grey.shade400;
 
                   pathNodes.add(_PathNode(
                     id: levelData['id']?.toString() ?? '${i + 1}',
@@ -284,7 +760,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                 return Stack(
                   children: [
                     Positioned(
-                      top: 60,
+                      top: 130,
                       right: -30,
                       child: Transform.rotate(
                         angle: -20 * pi / 180,
@@ -296,7 +772,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                       ),
                     ),
                     Positioned(
-                      bottom: 130, 
+                      bottom: 130,
                       left: -20,
                       child: Image.asset(
                         'assets/images/coco_bandera.png',
@@ -311,16 +787,28 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                         }
                         return false;
                       },
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 80.0, bottom: 200.0),
-                        child: Column(
-                          children: [
-                            SizedBox(
-                              height: dynamicMapHeight,
-                              child: _buildLevelPath(dynamicMapHeight, context, pathNodes), 
-                            ),
-                          ],
+                      child: RefreshIndicator(
+                        color: Colors.black87,
+                        backgroundColor: AppColors.primaryYellow,
+                        onRefresh: _refreshAllData,
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: BouncingScrollPhysics(),
+                          ),
+                          padding: const EdgeInsets.only(
+                              left: 20.0,
+                              right: 20.0,
+                              top: 150.0,
+                              bottom: 200.0),
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                height: dynamicMapHeight,
+                                child: _buildLevelPath(
+                                    dynamicMapHeight, context, pathNodes),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -329,67 +817,249 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               },
             ),
           ),
+
+          // Header Superior Fijo
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
+            top: 0,
             left: 0,
             right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryYellow,
-                  borderRadius: BorderRadius.circular(25),
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(50),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTopHeader(nickname, avatarUrl, streak, _currentLives),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 26, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryYellow,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white, width: 3.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(45),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Text(
-                  _currentHeaderTitle,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    child: Text(
+                      _currentHeaderTitle,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
         ],
       ),
+      // Barra inferior unificada con Liquid Glass amarillo y efecto 3D
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 15), 
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.primaryYellow,
+          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
+          child: SizedBox(
+            height: 60,
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(50),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryYellow.withAlpha(240),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: AppColors.textWhite.withAlpha(220), width: 2.8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(60),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildNavBarItem(
+                          'assets/images/Iconos/Icon_barra/user_icon.png', 0),
+                      _buildNavBarItem(
+                          'assets/images/Iconos/Icon_barra/Map_icon.png', 1),
+                      _buildNavBarItem(
+                          'assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
+                      _buildNavBarItem(
+                          'assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/user_icon.png', 0),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Map_icon.png', 1),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
-                _buildNavBarItem('assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
-              ],
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeader(
+      String nickname, String? avatarUrl, int streak, int lives) {
+    final bool isAdmin = _userProfile?['role'] == 'admin';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primaryYellow,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(40),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white, width: 2.5),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13.5),
+              child: Container(
+                width: 48,
+                height: 48,
+                color: Colors.white.withAlpha(200),
+                child: avatarUrl != null
+                    ? Image.network(
+                        avatarUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.person, color: Colors.black87, size: 28),
+                      )
+                    : const Icon(Icons.person, color: Colors.black87, size: 28),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _getGreeting(),
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  nickname,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 18,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _buildHeaderBadge(
+            value: '$streak',
+            label: 'racha',
+            badgeColor: Colors.white.withAlpha(230),
+            accentColor: Colors.orange.shade800,
+            icon: Icons.local_fire_department,
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _showLivesInfoModal,
+            onLongPress: () {
+              if (isAdmin) {
+                _showAdminRestoreLivesDialog();
+              }
+            },
+            child: _buildHeaderBadge(
+              value: '$lives',
+              label: 'vidas',
+              badgeColor: Colors.white.withAlpha(230),
+              accentColor: Colors.redAccent,
+              icon: Icons.favorite,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderBadge({
+    required String value,
+    required String label,
+    required Color badgeColor,
+    required Color accentColor,
+    required IconData icon,
+  }) {
+    return Container(
+      width: 58,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: badgeColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: accentColor),
+              const SizedBox(width: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: accentColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  fontFamily: 'Inter',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 1),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 11,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -399,36 +1069,46 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     return GestureDetector(
       onTap: () => _onNavBarTap(index),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? AppColors.textWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
+          border: isSelected
+              ? Border.all(color: Colors.white, width: 1.5)
+              : null,
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withAlpha(20),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  )
+                    color: Colors.black.withAlpha(40),
+                    blurRadius: 6,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withAlpha(200),
+                    blurRadius: 2,
+                    offset: const Offset(0, -1),
+                  ),
                 ]
               : [],
         ),
         child: Image.asset(
           assetPath,
-          width: 26,
-          height: 26,
+          width: 24,
+          height: 24,
           fit: BoxFit.contain,
         ),
       ),
     );
   }
 
-  Widget _buildLevelPath(double mapHeight, BuildContext context, List<_PathNode> pathNodes) {
+  Widget _buildLevelPath(
+      double mapHeight, BuildContext context, List<_PathNode> pathNodes) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final centers = pathNodes
-            .map((n) => Offset(n.position.dx * width, n.position.dy * mapHeight))
+            .map((n) =>
+                Offset(n.position.dx * width, n.position.dy * mapHeight))
             .toList();
 
         return Stack(
@@ -446,8 +1126,9 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     );
   }
 
-  List<Widget> _buildNodeWithShadow(_PathNode node, Offset center, BuildContext context) {
-    final nodeSize = 85.0;
+  List<Widget> _buildNodeWithShadow(
+      _PathNode node, Offset center, BuildContext context) {
+    const nodeSize = 85.0;
 
     return [
       Positioned(
@@ -473,42 +1154,38 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     ];
   }
 
-  Widget _buildLevelNode({required _PathNode node, required double size, required BuildContext context}) {
+  Widget _buildLevelNode(
+      {required _PathNode node,
+      required double size,
+      required BuildContext context}) {
+    final bool isAdmin = _userProfile?['role'] == 'admin';
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {
+        if (!node.isUnlocked) {
+          _showAdminBypassDialog(context, node);
+        }
+      },
       onTap: () async {
         if (!node.isUnlocked) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("🔒 Debes completar el nivel anterior para desbloquear este"),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text(isAdmin
+                  ? "🔒 Bloqueado (Mantén presionado para desbloquear como Admin)"
+                  : "🔒 Debes completar el nivel anterior para desbloquear este"),
+              duration: const Duration(seconds: 2),
             ),
           );
           return;
         }
 
-        String loadingTitle = "Cargando ${node.title}...";
-        int levelNumber = int.tryParse(node.number ?? '1') ?? 1;
-        int? specificId = int.tryParse(node.id);
-
-        // Esperamos a que el usuario termine el nivel y regrese
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LoadingLevelScreen(
-              languageId: widget.languageId,
-              levelNumber: levelNumber,
-              specificLevelId: specificId,
-              levelTitle: loadingTitle,
-            ),
-          ),
-        );
-
-        // Al volver, si el nivel se completó con éxito, recargamos el mapa consultando de nuevo Supabase
-        if (result == true && mounted) {
-          setState(() {
-            _levelsFuture = _fetchLevelsAndProgress();
-          });
+        if (_currentLives <= 0) {
+          _showNoLivesDialog();
+          return;
         }
+
+        _launchLevel(node);
       },
       child: SizedBox(
         width: size + 5,
@@ -535,10 +1212,11 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                 padding: const EdgeInsets.all(11),
                 child: node.isUnlocked
                     ? Image.asset(
-                        node.iconPath!, 
+                        node.iconPath!,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
-                          return const Icon(Icons.menu_book, color: Colors.white, size: 30);
+                          return const Icon(Icons.menu_book,
+                              color: Colors.white, size: 30);
                         },
                       )
                     : const Icon(Icons.lock, color: Colors.white, size: 32),
@@ -548,7 +1226,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               Positioned(
                 bottom: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.primaryYellow,
                     borderRadius: BorderRadius.circular(12),
@@ -596,7 +1275,7 @@ class _DashedPathPainter extends CustomPainter {
       double distance = 0;
       bool draw = true;
       while (distance < metric.length) {
-        final segmentLength = draw ? 9.0 : 9.0;
+        const segmentLength = 9.0;
         final end = min(distance + segmentLength, metric.length);
         if (draw) canvas.drawPath(metric.extractPath(distance, end), paint);
         distance = end;
@@ -606,5 +1285,6 @@ class _DashedPathPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DashedPathPainter oldDelegate) => oldDelegate.points != points;
+  bool shouldRepaint(covariant _DashedPathPainter oldDelegate) =>
+      oldDelegate.points != points;
 }

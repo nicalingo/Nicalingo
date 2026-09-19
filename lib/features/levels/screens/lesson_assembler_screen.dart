@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
@@ -28,17 +29,30 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   int lessonsPassedCount = 0;
   int accumulatedXp = 0;
 
+  // Historial de errores por lección para colorear la barra
+  final List<int> lessonErrorsHistory = [];
+
   bool isFinished = false;
   bool isSaving = false;
 
-  Map<String, dynamic> get currentLesson => widget.lessonsList[currentLessonIndex];
-  List<dynamic> get questions => currentLesson['questions'] ?? [];
+  Map<String, dynamic> get currentLesson =>
+      widget.lessonsList.isNotEmpty &&
+              currentLessonIndex < widget.lessonsList.length
+          ? widget.lessonsList[currentLessonIndex]
+          : {};
+
+  List<dynamic> get questions =>
+      (currentLesson['questions'] as List<dynamic>?) ?? [];
 
   void _onLessonFinished({required int errorsInLesson}) {
     setState(() {
+      lessonErrorsHistory.add(errorsInLesson);
       totalErrorsCommitted += errorsInLesson;
       lessonsPassedCount++;
-      accumulatedXp += (currentLesson['xpReward'] as num? ?? 15).toInt();
+      accumulatedXp += (currentLesson['xpReward'] as num? ??
+              currentLesson['xp_reward'] as num? ??
+              15)
+          .toInt();
     });
 
     if (currentLessonIndex < widget.lessonsList.length - 1) {
@@ -59,21 +73,84 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
-      if (user != null) {
-        await supabase.from('user_progress').upsert({
-          'user_id': user.id,
-          'level_id': widget.levelId,
-          'language_id': widget.languageId,
-          'is_completed': true,
-          'updated_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'user_id,level_id');
+      if (user == null) {
+        throw Exception("No hay usuario autenticado en la sesión actual.");
       }
-    } catch (e) {
-      debugPrint('Error guardando progreso en Supabase: $e');
+
+      final int targetLevelId = widget.levelId;
+      final int targetLanguageId = widget.languageId;
+      debugPrint("🚀 Guardando progreso: user_id=${user.id}, language_id=$targetLanguageId, level_id=$targetLevelId");
+
+      // Inserción o actualización directa respetando NOT NULL en language_id
+      // y la llave primaria compuesta (user_id, language_id)
+      final response = await supabase.from('user_progress').upsert(
+        {
+          'user_id': user.id,
+          'language_id': targetLanguageId,
+          'level_id': targetLevelId,
+          'current_level_id': targetLevelId,
+          'is_completed': true,
+          'last_activity': DateTime.now().toUtc().toIso8601String(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        onConflict: 'user_id, language_id',
+      ).select();
+
+      debugPrint("✅ RESPUESTA SUPABASE user_progress: $response");
+
+      // Disparar cálculo y persistencia de la racha diaria
+      try {
+        final newStreak = await supabase.rpc(
+          'update_user_streak',
+          params: {'user_uuid': user.id},
+        );
+        debugPrint("🔥 Racha sincronizada correctamente: $newStreak");
+      } catch (streakError) {
+        debugPrint("⚠️ Aviso actualizando racha: $streakError");
+      }
+    } catch (e, stack) {
+      debugPrint("❌ ERROR GUARDANDO PROGRESO: $e");
+      debugPrint("❌ STACK: $stack");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error guardando progreso: $e'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => isSaving = false);
       }
+    }
+  }
+
+  String _resolveLessonType(Map<String, dynamic> lesson) {
+    final rawType =
+        (lesson['lessonType'] ?? lesson['lesson_type'] ?? 'multiple_choice')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+    switch (rawType) {
+      case 'order_phrase':
+      case 'order_word':
+      case 'order_words':
+      case 'ordenar_palabra':
+      case 'ordenar_frase':
+        return 'order_phrase';
+      case 'introduction':
+      case 'introduccion':
+        return 'introduction';
+      case 'multimedia':
+      case 'audio':
+        return 'multimedia';
+      case 'multiple_choice':
+      case 'seleccion_multiple':
+      default:
+        return 'multiple_choice';
     }
   }
 
@@ -88,18 +165,20 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
         _onLessonFinished(errorsInLesson: 0);
       });
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: AppColors.primaryYellow)),
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primaryYellow)),
       );
     }
 
-    String lessonType = currentLesson['lessonType'] ?? 'multiple_choice';
+    final String resolvedLessonType = _resolveLessonType(currentLesson);
 
     return LessonTemplateContainer(
       lessonTitle: currentLesson['title'] ?? widget.levelTitle,
-      lessonType: lessonType,
+      lessonType: resolvedLessonType,
       questions: questions,
       currentIndexLesson: currentLessonIndex,
       totalLessons: widget.lessonsList.length,
+      lessonErrorsHistory: lessonErrorsHistory,
       onLessonCompleted: (errors) {
         _onLessonFinished(errorsInLesson: errors);
       },
@@ -132,7 +211,8 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const FaIcon(FontAwesomeIcons.trophy, size: 72, color: AppColors.primaryYellow),
+                  const FaIcon(FontAwesomeIcons.trophy,
+                      size: 72, color: AppColors.primaryYellow),
                   const SizedBox(height: 24),
                   const Text(
                     "¡NIVEL COMPLETADO!",
@@ -156,8 +236,6 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
-
-                  // Fila de métricas adaptables sin overflow de píxeles
                   Row(
                     children: [
                       Expanded(
@@ -170,16 +248,19 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _metricBadge(
-                          icon: isPerfect ? FontAwesomeIcons.circleCheck : FontAwesomeIcons.circleXmark,
+                          icon: isPerfect
+                              ? FontAwesomeIcons.circleCheck
+                              : FontAwesomeIcons.circleXmark,
                           label: isPerfect
                               ? "0 Errores"
                               : "$totalErrorsCommitted ${totalErrorsCommitted == 1 ? 'Error' : 'Errores'}",
-                          color: isPerfect ? const Color(0xFF4ADE80) : const Color(0xFFFF5252),
+                          color: isPerfect
+                              ? const Color(0xFF4ADE80)
+                              : const Color(0xFFFF5252),
                         ),
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 36),
                   SizedBox(
                     width: double.infinity,
@@ -226,7 +307,8 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     );
   }
 
-  Widget _metricBadge({required dynamic icon, required String label, required Color color}) {
+  Widget _metricBadge(
+      {required dynamic icon, required String label, required Color color}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_map.dart';
+import 'package:nicalingo/features/auth/screens/forgot_password_screen.dart';
 
 class PasswordScreen extends StatefulWidget {
-  const PasswordScreen({super.key});
+  final String? initialEmail;
+
+  const PasswordScreen({super.key, this.initialEmail});
 
   @override
   State<PasswordScreen> createState() => _PasswordScreenState();
@@ -15,6 +18,14 @@ class _PasswordScreenState extends State<PasswordScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null && widget.initialEmail!.isNotEmpty) {
+      _emailController.text = widget.initialEmail!;
+    }
+  }
 
   @override
   void dispose() {
@@ -34,7 +45,6 @@ class _PasswordScreenState extends State<PasswordScreen> {
       );
 
       try {
-        // Autenticación real con Supabase Auth
         await Supabase.instance.client.auth.signInWithPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
@@ -50,13 +60,11 @@ class _PasswordScreenState extends State<PasswordScreen> {
             builder: (context) => const HomeMapScreen(),
           ),
         );
-
       } catch (e) {
         if (!mounted) return;
         Navigator.pop(context);
 
         if (!mounted) return;
-        // error en caso de que las credenciales sean incorrectas
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al iniciar sesión: ${e.toString()}'),
@@ -214,6 +222,12 @@ class _PasswordScreenState extends State<PasswordScreen> {
 
                           TextButton(
                             onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const ForgotPasswordScreen(),
+                                ),
+                              );
                             },
                             child: const Text(
                               '¿Olvidaste tu contraseña?',
@@ -270,11 +284,11 @@ class _PasswordScreenState extends State<PasswordScreen> {
           fillColor: Colors.white,
           filled: true,
           suffixIcon: suffixIcon,
-          prefixIcon: suffixIcon != null 
+          prefixIcon: suffixIcon != null
               ? const Visibility(
-                  visible: false, 
-                  maintainSize: true, 
-                  maintainAnimation: true, 
+                  visible: false,
+                  maintainSize: true,
+                  maintainAnimation: true,
                   maintainState: true,
                   child: Icon(Icons.visibility),
                 )

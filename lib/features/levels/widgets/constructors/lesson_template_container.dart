@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 
 class LessonTemplateContainer extends StatefulWidget {
@@ -8,6 +9,7 @@ class LessonTemplateContainer extends StatefulWidget {
   final List<dynamic> questions;
   final int currentIndexLesson;
   final int totalLessons;
+  final List<int> lessonErrorsHistory;
   final Function(int errorsInLesson) onLessonCompleted;
 
   const LessonTemplateContainer({
@@ -17,6 +19,7 @@ class LessonTemplateContainer extends StatefulWidget {
     required this.questions,
     required this.currentIndexLesson,
     required this.totalLessons,
+    this.lessonErrorsHistory = const [],
     required this.onLessonCompleted,
   });
 
@@ -27,6 +30,7 @@ class LessonTemplateContainer extends StatefulWidget {
 class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   int currentQuestionIndex = 0;
   int localErrors = 0;
+  int currentLives = 5;
   int? selectedOptionIndex;
   bool answered = false;
   bool lastAnswerWasCorrect = false;
@@ -42,6 +46,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   @override
   void initState() {
     super.initState();
+    _fetchUserLives();
     _initQuestionState();
   }
 
@@ -56,72 +61,188 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     }
   }
 
+  Future<void> _fetchUserLives() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final data = await Supabase.instance.client
+          .from('user_progress')
+          .select('lives')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (data != null && data['lives'] != null && mounted) {
+        setState(() {
+          currentLives = (data['lives'] as num).toInt();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error obteniendo vidas: $e');
+    }
+  }
+
   void _initQuestionState() {
     answered = false;
     selectedOptionIndex = null;
     lastAnswerWasCorrect = false;
     correctAnswerText = '';
     selectedWords.clear();
+    availableWords.clear();
 
     if (widget.lessonType == 'order_phrase' && widget.questions.isNotEmpty) {
-      final List<dynamic> options = currentQ['question_options'] ?? [];
-      availableWords = options.map((o) => o['option_text'].toString()).toList();
-      availableWords.shuffle();
+      final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
+
+      String target = (currentQ['correct_phrase'] ?? '').toString().trim();
+
+      if (target.isEmpty && options.isNotEmpty) {
+        Map<String, dynamic>? foundOpt;
+        for (final opt in options) {
+          if (opt is Map && (opt['is_correct'] == true || opt['is_correct'] == 'true')) {
+            foundOpt = Map<String, dynamic>.from(opt);
+            break;
+          }
+        }
+
+        foundOpt ??= (options.first is Map) ? Map<String, dynamic>.from(options.first) : null;
+
+        if (foundOpt != null) {
+          target = (foundOpt['option_text'] ?? '').toString().trim();
+        }
+      }
+
+      if (target.isEmpty) {
+        target = (currentQ['question_text'] ?? '').toString().trim();
+      }
+
+      if (target.isNotEmpty) {
+        target = target[0].toUpperCase() + target.substring(1).toLowerCase();
+      }
+      correctAnswerText = target;
+
+      if (target.contains(' ')) {
+        availableWords = target.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+      } else {
+        availableWords = target.split('').where((c) => c.isNotEmpty).toList();
+      }
+
+      if (availableWords.length > 1) {
+        int attempts = 0;
+        final String originalOrder = availableWords.join('');
+        while (availableWords.join('') == originalOrder && attempts < 10) {
+          availableWords.shuffle();
+          attempts++;
+        }
+      }
+    }
+  }
+
+  Future<void> _deductLifeOnMistake() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final remaining = await Supabase.instance.client.rpc(
+        'deduct_life',
+        params: {'user_uuid': user.id},
+      );
+
+      final int remainingLives = (remaining as int?) ?? (currentLives > 0 ? currentLives - 1 : 0);
+
+      if (mounted) {
+        setState(() {
+          currentLives = remainingLives;
+        });
+      }
+
+      if (remainingLives <= 0 && mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.heart_broken, color: Colors.redAccent, size: 28),
+                SizedBox(width: 8),
+                Text('¡Te quedaste sin vidas!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: const Text(
+              'Has agotado todas tus vidas en esta lección. Espera a que se regeneren o vuelve más tarde.',
+              style: TextStyle(fontSize: 14),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryYellow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(dialogCtx);
+                  Navigator.pop(context, false);
+                },
+                child: const Text('Volver al mapa', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error descontando vida: $e');
     }
   }
 
   void _handleAnswerSelection(bool isCorrect, int optionIndex) {
     if (answered) return;
 
-    final List<dynamic> options = currentQ['question_options'] ?? [];
+    final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
     
-    final correctOpt = options.firstWhere(
-      (o) => o['is_correct'] == true,
-      orElse: () => <String, dynamic>{},
-    );
+    Map<String, dynamic>? correctOpt;
+    for (final opt in options) {
+      if (opt is Map && (opt['is_correct'] == true || opt['is_correct'] == 'true')) {
+        correctOpt = Map<String, dynamic>.from(opt);
+        break;
+      }
+    }
 
     setState(() {
       answered = true;
       selectedOptionIndex = optionIndex;
       lastAnswerWasCorrect = isCorrect;
-      correctAnswerText = (correctOpt != null && correctOpt is Map && correctOpt.isNotEmpty) 
-          ? correctOpt['option_text'] ?? '' 
-          : '';
+      correctAnswerText = correctOpt?['option_text']?.toString() ?? '';
       if (!isCorrect) {
         localErrors++;
       }
     });
+
+    if (!isCorrect) {
+      _deductLifeOnMistake();
+    }
   }
 
   void _checkOrderPhrase() {
-    if (answered) return;
+    if (answered || selectedWords.isEmpty) return;
 
-    final List<dynamic> options = currentQ['question_options'] ?? [];
-    
-    String expectedPhrase = currentQ['correct_phrase'] ?? '';
-    
-    if (expectedPhrase.isEmpty) {
-      expectedPhrase = options
-          .where((o) => o['is_correct'] == true)
-          .map((o) => o['option_text'].toString())
-          .join(' ');
-      
-      if (expectedPhrase.isEmpty) {
-        expectedPhrase = options.map((o) => o['option_text'].toString()).join(' ');
-      }
-    }
+    final String separator = correctAnswerText.contains(' ') ? ' ' : '';
+    final String userResult = selectedWords.join(separator).trim();
 
-    final String userPhrase = selectedWords.join(' ');
-    final bool isCorrect = userPhrase.trim().toLowerCase() == expectedPhrase.trim().toLowerCase();
+    final String correctCapitalized = correctAnswerText.trim();
+    final String correctLowerCase = correctAnswerText.trim().toLowerCase();
+
+    final bool isCorrect = (userResult == correctCapitalized) || (userResult == correctLowerCase);
 
     setState(() {
       answered = true;
       lastAnswerWasCorrect = isCorrect;
-      correctAnswerText = expectedPhrase;
       if (!isCorrect) {
         localErrors++;
       }
     });
+
+    if (!isCorrect) {
+      _deductLifeOnMistake();
+    }
   }
 
   void _nextQuestion() {
@@ -192,7 +313,10 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Widget _buildProgressBar() {
-    final totalQ = widget.questions.isEmpty ? 1 : widget.questions.length;
+    final int totalQ = widget.questions.isEmpty ? 1 : widget.questions.length;
+    final int totalLessons = widget.totalLessons > 0 ? widget.totalLessons : 1;
+    final int currentLesson = widget.currentIndexLesson;
+
     return Column(
       children: [
         Row(
@@ -200,12 +324,12 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           children: [
             Expanded(
               child: Text(
-                "Pregunta ${currentQuestionIndex + 1} de $totalQ",
+                "Lección ${currentLesson + 1} de $totalLessons",
                 style: const TextStyle(
                   fontFamily: 'Inter',
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -213,14 +337,14 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 16),
-                const SizedBox(width: 4),
+                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 20),
+                const SizedBox(width: 5),
                 Text(
-                  localErrors == 0 ? "Perfecto" : "$localErrors ${localErrors == 1 ? 'error' : 'errores'}",
-                  style: TextStyle(
+                  "$currentLives",
+                  style: const TextStyle(
                     fontFamily: 'Inter',
-                    color: localErrors == 0 ? Colors.greenAccent : Colors.redAccent,
-                    fontSize: 13,
+                    color: Colors.white,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -229,14 +353,52 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           ],
         ),
         const SizedBox(height: 10),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: (currentQuestionIndex + 1) / totalQ,
-            backgroundColor: Colors.white.withValues(alpha: 0.15),
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryYellow),
-            minHeight: 10,
-          ),
+        Row(
+          children: List.generate(totalLessons, (index) {
+            Color segmentColor;
+
+            if (index < currentLesson) {
+              // Lección completada: si tuvo errores en su momento se muestra roja, si no verde
+              final int pastErrors = (index < widget.lessonErrorsHistory.length)
+                  ? widget.lessonErrorsHistory[index]
+                  : 0;
+              segmentColor = pastErrors > 0 ? Colors.redAccent : Colors.greenAccent;
+            } else if (index == currentLesson) {
+              // Lección en curso:
+              // 1. Si cometió error -> Roja
+              // 2. Si completó la última pregunta sin errores -> Verde
+              // 3. Mientras esté respondiendo bien -> Amarilla
+              if (localErrors > 0) {
+                segmentColor = Colors.redAccent;
+              } else if (answered && lastAnswerWasCorrect && currentQuestionIndex >= totalQ - 1) {
+                segmentColor = Colors.greenAccent;
+              } else {
+                segmentColor = AppColors.primaryYellow;
+              }
+            } else {
+              // Lecciones futuras aún no alcanzadas
+              segmentColor = Colors.white.withValues(alpha: 0.2);
+            }
+
+            return Expanded(
+              child: Container(
+                height: 10,
+                margin: EdgeInsets.symmetric(horizontal: totalLessons > 10 ? 1.0 : 2.0),
+                decoration: BoxDecoration(
+                  color: segmentColor,
+                  borderRadius: BorderRadius.circular(5),
+                  boxShadow: [
+                    if (index == currentLesson)
+                      BoxShadow(
+                        color: segmentColor.withValues(alpha: 0.5),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
         ),
       ],
     );
@@ -549,13 +711,30 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Widget _buildOrderPhraseView() {
-    final String questionText = currentQ['question_text'] ?? 'Ordena la frase.';
+    final String questionText = currentQ['question_text'] ?? 'Ordena la palabra';
     final String? imageUrl = currentQ['image_url'];
+
+    final List<dynamic> options = (currentQ['question_options'] as List<dynamic>?) ?? [];
+    String hintText = (currentQ['word_translation'] ?? currentQ['hint'] ?? '').toString().trim();
+    if (hintText.isEmpty && options.isNotEmpty) {
+      for (final opt in options) {
+        if (opt is Map && opt['word_translation'] != null && opt['word_translation'].toString().isNotEmpty) {
+          hintText = opt['word_translation'].toString().trim();
+          break;
+        }
+      }
+    }
+    if (hintText.isEmpty) {
+      hintText = (currentQ['description'] ?? '').toString().trim();
+    }
+
+    final int cleanLength = correctAnswerText.replaceAll(' ', '').length;
+    final int targetLength = cleanLength > 0 ? cleanLength : (availableWords.isNotEmpty ? availableWords.length : 1);
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
       appBar: AppBar(
-        title: Text("${widget.lessonTitle} (Armar)", style: const TextStyle(fontFamily: 'Noot')),
+        title: Text(widget.lessonTitle, style: const TextStyle(fontFamily: 'Noot')),
         backgroundColor: const Color(0xFF1E3A8A),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -567,7 +746,8 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildProgressBar(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+
               Text(
                 questionText,
                 style: const TextStyle(
@@ -578,90 +758,192 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+
               _buildOptionalImage(imageUrl),
+
               Container(
-                padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(minHeight: 85),
+                height: 80,
+                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color: Colors.white.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white30),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
                 ),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: selectedWords.isEmpty
-                      ? [
-                          const Text(
-                            "Toca las palabras de abajo para formar la frase",
-                            style: TextStyle(fontFamily: 'Inter', color: Colors.white54, fontSize: 14),
-                          )
-                        ]
-                      : selectedWords
-                          .map(
-                            (word) => ActionChip(
-                              backgroundColor: AppColors.primaryYellow,
-                              label: Text(
-                                word,
-                                style: const TextStyle(
-                                  fontFamily: 'Inter',
-                                  color: Colors.black87,
-                                  fontWeight: FontWeight.bold,
+                child: Center(
+                  child: selectedWords.isEmpty
+                      ? Text(
+                          List.generate(targetLength, (_) => "-").join(""),
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            color: Colors.white60,
+                            fontSize: 32,
+                            letterSpacing: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(targetLength, (index) {
+                                final bool hasLetter = index < selectedWords.length;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                                  child: Text(
+                                    hasLetter ? selectedWords[index] : "-",
+                                    style: TextStyle(
+                                      fontFamily: 'Noot',
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: hasLetter ? AppColors.primaryYellow : Colors.white30,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+
+              const Spacer(),
+
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hintText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10.0),
+                      child: Text(
+                        hintText,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 22, 16, 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 10,
+                          alignment: WrapAlignment.center,
+                          children: List.generate(availableWords.length, (index) {
+                            final char = availableWords[index];
+                            return SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: const Color(0xFF1B2A6B),
+                                  padding: EdgeInsets.zero,
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onPressed: answered || selectedWords.length >= targetLength
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          final picked = availableWords.removeAt(index);
+                                          selectedWords.add(picked);
+                                        });
+                                      },
+                                child: Text(
+                                  char,
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                              onPressed: answered
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 18),
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: SizedBox(
+                            width: 58,
+                            height: 42,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: answered || selectedWords.isEmpty
                                   ? null
                                   : () {
                                       setState(() {
-                                        selectedWords.remove(word);
-                                        availableWords.add(word);
+                                        final last = selectedWords.removeLast();
+                                        availableWords.add(last);
                                       });
                                     },
+                              child: const Icon(Icons.backspace_rounded, size: 22),
                             ),
-                          )
-                          .toList(),
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: availableWords
-                    .map(
-                      (word) => ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
                         ),
-                        onPressed: answered
-                          ? null
-                          : () {
-                              setState(() {
-                                availableWords.remove(word);
-                                selectedWords.add(word);
-                              });
-                            },
-                        child: Text(word, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600)),
-                      ),
-                    )
-                    .toList(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 22),
+
               if (!answered)
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryYellow,
                     foregroundColor: Colors.black87,
-                    minimumSize: const Size.fromHeight(54),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    minimumSize: const Size.fromHeight(56),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 3,
                   ),
                   onPressed: selectedWords.isEmpty ? null : _checkOrderPhrase,
                   child: const Text(
-                    "Comprobar",
-                    style: TextStyle(fontFamily: 'Noot', fontSize: 18, fontWeight: FontWeight.bold),
+                    "COMPROBAR",
+                    style: TextStyle(
+                      fontFamily: 'Noot',
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
               if (answered) _buildFeedbackBanner(),
