@@ -9,72 +9,124 @@ permissions:
   contents: write
 
 jobs:
+  # ----------------------------------------------------
+  # JOB 1: ANDROID
+  # ----------------------------------------------------
   build-android:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
+
+      - name: Configurar Java
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
-      - uses: subosito/flutter-action@v2
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
-      - run: flutter pub get
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Compilar APK (Android)
+        run: flutter build apk --release
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
 
+  # ----------------------------------------------------
+  # JOB 2: WEB
+  # ----------------------------------------------------
   build-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
-      - run: flutter pub get
-      - run: flutter build web --release
-      - run: zip -r nicalingo_web.zip build/web
-      - uses: actions/upload-artifact@v4
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Compilar Web
+        run: flutter build web --release
+
+      - name: Comprimir Web
+        run: zip -r nicalingo_web.zip build/web
+
+      - name: Guardar Web ZIP como artefacto
+        uses: actions/upload-artifact@v4
         with:
           name: web-release
           path: nicalingo_web.zip
 
+  # ----------------------------------------------------
+  # JOB 3: WINDOWS
+  # ----------------------------------------------------
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
-      - run: flutter pub get
-      - run: flutter build windows --release
-      - shell: pwsh
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Compilar Windows
+        run: flutter build windows --release
+
+      - name: Comprimir Windows
+        shell: pwsh
         run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath nicalingo_windows.zip
-      - uses: actions/upload-artifact@v4
+
+      - name: Guardar Windows ZIP como artefacto
+        uses: actions/upload-artifact@v4
         with:
           name: windows-release
           path: nicalingo_windows.zip
 
+  # ----------------------------------------------------
+  # JOB 4: PUBLICAR RELEASE
+  # ----------------------------------------------------
   publish-release:
     needs: [build-android, build-web, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - id: get_version
+
+      - name: Extraer versión de pubspec.yaml
+        id: get_version
         run: |
           VERSION=$(grep '^version: ' pubspec.yaml | sed 's/version: //')
           TAG="v$(echo $VERSION | cut -d'+' -f1)"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
-      - uses: actions/download-artifact@v4
+
+      - name: Descargar artefactos
+        uses: actions/download-artifact@v4
         with:
           path: release-files
-      - uses: softprops/action-gh-release@v2
+          merge-multiple: true
+
+      - name: Listar archivos para verificar
+        run: ls -la release-files
+
+      - name: Publicar en GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Release ${{ env.RELEASE_TAG }}
@@ -82,8 +134,8 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release-files/app-release/app-release.apk
-            release-files/web-release/nicalingo_web.zip
-            release-files/windows-release/nicalingo_windows.zip
+            release-files/app-release.apk
+            release-files/nicalingo_web.zip
+            release-files/nicalingo_windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
