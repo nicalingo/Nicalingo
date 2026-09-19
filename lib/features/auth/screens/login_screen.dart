@@ -64,7 +64,9 @@ class _LoginScreenState extends State<LoginScreen> {
               onNavigation: () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const PasswordScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => PasswordScreen(initialEmail: email),
+                  ),
                 );
               },
             ),
@@ -326,10 +328,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             const Spacer(),
                             TextButton(
                               onPressed: () {
+                                final currentEmail = _emailController.text.trim();
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const PasswordScreen(),
+                                    builder: (context) => PasswordScreen(
+                                      initialEmail: currentEmail.isNotEmpty ? currentEmail : null,
+                                    ),
                                   ),
                                 );
                               },

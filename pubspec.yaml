@@ -27,6 +27,14 @@ flutter_launcher_icons:
   image_path: "assets/images/icono_app.png"
   min_sdk_android: 21
 
+flutter_native_splash:
+  color: "#FFDE59"
+  image: "assets/images/icono_app.png"
+  android_12:
+    color: "#FFDE59"
+    image: "assets/images/icono_app.png"
+  fullscreen: true
+
 flutter:
   uses-material-design: true
 

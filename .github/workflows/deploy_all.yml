@@ -1,0 +1,74 @@
+name: Build & Release NicaLingo Multiplatform
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest # Obligatorio para compilar la app de Windows
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java (Para Android)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Extraer versión de pubspec.yaml
+        id: get_version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)').Matches.Groups[1].Value
+          echo "APP_VERSION=$version" >> $env:GITHUB_ENV
+          $tag = "v" + ($version -split '\+')[0]
+          echo "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+
+      - name: Compilar APK (Android)
+        run: flutter build apk --release
+
+      - name: Compilar Web
+        run: flutter build web --release
+
+      - name: Comprimir Web en ZIP
+        shell: pwsh
+        run: Compress-Archive -Path build\web\* -DestinationPath nicalingo_web.zip
+
+      - name: Compilar Windows
+        run: flutter build windows --release
+
+      - name: Comprimir Windows en ZIP
+        shell: pwsh
+        # Comprime toda la carpeta Release porque el .exe necesita las .dll adjuntas
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath nicalingo_windows.zip
+
+      - name: Publicar en GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }}
+          body: "Actualización automática de NicaLingo."
+          draft: false
+          prerelease: false
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            nicalingo_windows.zip
+            nicalingo_web.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
+import 'package:nicalingo/features/auth/screens/login_screen.dart';
 
 class HomeSettingsScreen extends StatefulWidget {
   const HomeSettingsScreen({super.key});
@@ -41,6 +42,234 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isLoading = false;
+    String? dialogError;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                "Cambiar contraseña",
+                style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold),
+              ),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (dialogError != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  dialogError!,
+                                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      TextFormField(
+                        controller: currentPasswordController,
+                        obscureText: obscureCurrent,
+                        enabled: !isLoading,
+                        decoration: InputDecoration(
+                          labelText: "Contraseña actual",
+                          prefixIcon: const Icon(Icons.vpn_key_outlined, color: Color(0xFF1E3A8A)),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureCurrent ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.black54,
+                            ),
+                            onPressed: () {
+                              setDialogState(() => obscureCurrent = !obscureCurrent);
+                            },
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Ingresa tu contraseña actual";
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: newPasswordController,
+                        obscureText: obscureNew,
+                        enabled: !isLoading,
+                        decoration: InputDecoration(
+                          labelText: "Nueva contraseña",
+                          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF1E3A8A)),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureNew ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.black54,
+                            ),
+                            onPressed: () {
+                              setDialogState(() => obscureNew = !obscureNew);
+                            },
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "Ingresa la nueva contraseña";
+                          }
+                          if (value.trim().length < 6) {
+                            return "Mínimo 6 caracteres";
+                          }
+                          if (value.trim() == currentPasswordController.text.trim()) {
+                            return "Debe ser diferente a la actual";
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: confirmPasswordController,
+                        obscureText: obscureConfirm,
+                        enabled: !isLoading,
+                        decoration: InputDecoration(
+                          labelText: "Confirmar nueva contraseña",
+                          prefixIcon: const Icon(Icons.lock_reset, color: Color(0xFF1E3A8A)),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.black54,
+                            ),
+                            onPressed: () {
+                              setDialogState(() => obscureConfirm = !obscureConfirm);
+                            },
+                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        validator: (value) {
+                          if (value != newPasswordController.text) {
+                            return "Las contraseñas no coinciden";
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                if (!isLoading)
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text("Cancelar", style: TextStyle(color: Colors.black54)),
+                  ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A8A),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          final currentPassword = currentPasswordController.text.trim();
+                          final newPassword = newPasswordController.text.trim();
+                          final email = Supabase.instance.client.auth.currentUser?.email;
+
+                          if (email == null) {
+                            setDialogState(() {
+                              dialogError = "No se encontró sesión activa.";
+                            });
+                            return;
+                          }
+
+                          final messenger = ScaffoldMessenger.of(context);
+
+                          setDialogState(() {
+                            isLoading = true;
+                            dialogError = null;
+                          });
+
+                          try {
+                            await Supabase.instance.client.auth.signInWithPassword(
+                              email: email,
+                              password: currentPassword,
+                            );
+
+                            await Supabase.instance.client.auth.updateUser(
+                              UserAttributes(password: newPassword),
+                            );
+
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('¡Contraseña actualizada con éxito!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } on AuthException catch (e) {
+                            setDialogState(() {
+                              isLoading = false;
+                              if (e.message.toLowerCase().contains("invalid login credentials")) {
+                                dialogError = "La contraseña actual es incorrecta.";
+                              } else {
+                                dialogError = e.message;
+                              }
+                            });
+                          } catch (e) {
+                            setDialogState(() {
+                              isLoading = false;
+                              dialogError = "Error al actualizar: $e";
+                            });
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          "Guardar",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _logout() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -72,17 +301,38 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
     );
 
     if (confirm == true) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+
       try {
         await Supabase.instance.client.auth.signOut();
-        if (mounted) {
-          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-        }
+
+        if (!mounted) return;
+
+        Navigator.of(context, rootNavigator: true).pop();
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al cerrar sesión: $e')),
-          );
-        }
+        if (!mounted) return;
+
+        Navigator.of(context, rootNavigator: true).pop();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cerrar sesión: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     }
   }
@@ -124,19 +374,31 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                     items: [
                       _buildRowItem(
                         icon: Icons.person_outline,
-                        label: "Información de la cuenta",
+                        label: "Información personal",
                         onTap: () {},
                       ),
                       _buildDivider(),
                       _buildRowItem(
                         icon: Icons.lock_outline,
                         label: "Cambiar contraseña",
-                        onTap: () {},
+                        onTap: _changePassword,
                       ),
                       _buildDivider(),
                       _buildRowItem(
                         icon: Icons.mail_outline,
                         label: "Correo electrónico",
+                        onTap: () {},
+                      ),
+                      _buildDivider(),
+                      _buildRowItem(
+                        icon: Icons.notifications_none,
+                        label: "Notificaciones",
+                        onTap: () {},
+                      ),
+                      _buildDivider(),
+                      _buildRowItem(
+                        icon: Icons.privacy_tip_outlined,
+                        label: "Privacidad",
                         onTap: () {},
                       ),
                     ],
@@ -238,7 +500,6 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
           ),
         ],
       ),
-      // Barra inferior con Liquid Glass amarillo vivo, borde brillante y efecto 3D unificado
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
@@ -409,9 +670,7 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
         decoration: BoxDecoration(
           color: isSelected ? AppColors.textWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? Border.all(color: Colors.white, width: 1.5)
-              : null,
+          border: isSelected ? Border.all(color: Colors.white, width: 1.5) : null,
           boxShadow: isSelected
               ? [
                   BoxShadow(

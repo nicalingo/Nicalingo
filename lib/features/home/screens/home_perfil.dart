@@ -23,10 +23,16 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
   final int _currentIndex = 0;
   final ImagePicker _picker = ImagePicker();
 
+  int _selectedFriendsTab = 0; // 0: Amigos, 1: Solicitudes
+  bool _loadingFriends = false;
+  List<Map<String, dynamic>> _confirmedFriends = [];
+  List<Map<String, dynamic>> _pendingRequests = [];
+
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
+    _loadFriendships();
   }
 
   Future<void> _loadUserProfile() async {
@@ -89,6 +95,247 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
           SnackBar(content: Text('Error al cargar perfil: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _loadFriendships() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    setState(() => _loadingFriends = true);
+
+    try {
+      final rawData = await supabase
+          .from('friendships')
+          .select('id, sender_id, receiver_id, status, streak_count')
+          .or('sender_id.eq.${user.id},receiver_id.eq.${user.id}');
+
+      List<Map<String, dynamic>> friendsList = [];
+      List<Map<String, dynamic>> requestsList = [];
+
+      for (var f in rawData) {
+        final String status = f['status'];
+        final String senderId = f['sender_id'];
+        final String receiverId = f['receiver_id'];
+        final String friendshipId = f['id'];
+        final int streakCount = f['streak_count'] ?? 0;
+
+        if (status == 'accepted') {
+          final otherId = (senderId == user.id) ? receiverId : senderId;
+          final friendProfile = await supabase
+              .from('profiles')
+              .select('id, nickname, avatar_url, streak')
+              .eq('id', otherId)
+              .maybeSingle();
+
+          if (friendProfile != null) {
+            friendsList.add({
+              'friendship_id': friendshipId,
+              'profile': friendProfile,
+              'streak_count': streakCount,
+            });
+          }
+        } else if (status == 'pending' && receiverId == user.id) {
+          final senderProfile = await supabase
+              .from('profiles')
+              .select('id, nickname, avatar_url')
+              .eq('id', senderId)
+              .maybeSingle();
+
+          if (senderProfile != null) {
+            requestsList.add({
+              'friendship_id': friendshipId,
+              'profile': senderProfile,
+            });
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _confirmedFriends = friendsList;
+          _pendingRequests = requestsList;
+          _loadingFriends = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingFriends = false);
+        debugPrint('Error cargando amistades: $e');
+      }
+    }
+  }
+
+  void _showAddFriendDialog() {
+    final TextEditingController searchController = TextEditingController();
+    bool isSearching = false;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Añadir amigo',
+                style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Apodo exacto del amigo',
+                      prefixIcon: const Icon(Icons.person_search, color: Color(0xFF1E3A8A)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.black54)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A8A),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: isSearching
+                      ? null
+                      : () async {
+                          final query = searchController.text.trim();
+                          if (query.isEmpty) return;
+
+                          final messenger = ScaffoldMessenger.of(context);
+
+                          setDialogState(() {
+                            isSearching = true;
+                            errorMessage = null;
+                          });
+
+                          try {
+                            final currentUser = supabase.auth.currentUser;
+                            if (currentUser == null) return;
+
+                            final targetUser = await supabase
+                                .from('profiles')
+                                .select('id, nickname')
+                                .ilike('nickname', query)
+                                .maybeSingle();
+
+                            if (targetUser == null) {
+                              setDialogState(() {
+                                isSearching = false;
+                                errorMessage = 'No se encontró ningún usuario con ese apodo.';
+                              });
+                              return;
+                            }
+
+                            if (targetUser['id'] == currentUser.id) {
+                              setDialogState(() {
+                                isSearching = false;
+                                errorMessage = 'No puedes agregarte a ti mismo.';
+                              });
+                              return;
+                            }
+
+                            final existing = await supabase
+                                .from('friendships')
+                                .select('id, status')
+                                .or('and(sender_id.eq.${currentUser.id},receiver_id.eq.${targetUser['id']}),and(sender_id.eq.${targetUser['id']},receiver_id.eq.${currentUser.id})')
+                                .maybeSingle();
+
+                            if (existing != null) {
+                              setDialogState(() {
+                                isSearching = false;
+                                errorMessage = existing['status'] == 'accepted'
+                                    ? 'Ya son amigos.'
+                                    : 'Ya existe una solicitud pendiente con este usuario.';
+                              });
+                              return;
+                            }
+
+                            await supabase.from('friendships').insert({
+                              'sender_id': currentUser.id,
+                              'receiver_id': targetUser['id'],
+                              'status': 'pending',
+                            });
+
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('¡Solicitud enviada a ${targetUser['nickname']}!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            setDialogState(() {
+                              isSearching = false;
+                              errorMessage = 'Error al enviar solicitud: $e';
+                            });
+                          }
+                        },
+                  child: isSearching
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          'Enviar',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _respondToRequest(String friendshipId, bool accept) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (accept) {
+        await supabase
+            .from('friendships')
+            .update({'status': 'accepted', 'streak_count': 0})
+            .eq('id', friendshipId);
+      } else {
+        await supabase
+            .from('friendships')
+            .delete()
+            .eq('id', friendshipId);
+      }
+
+      await _loadFriendships();
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(accept ? '¡Solicitud aceptada!' : 'Solicitud rechazada'),
+          backgroundColor: accept ? Colors.green : Colors.black87,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Error al responder: $e')),
+      );
     }
   }
 
@@ -259,7 +506,10 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
             child: RefreshIndicator(
               color: Colors.black87,
               backgroundColor: AppColors.primaryYellow,
-              onRefresh: _loadUserProfile,
+              onRefresh: () async {
+                await _loadUserProfile();
+                await _loadFriendships();
+              },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
@@ -367,7 +617,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                       ),
                     const SizedBox(height: 20),
                     
-                    // Tarjeta de estadísticas con el estilo unificado pero conservando los colores de sus elementos
+                    // Tarjeta de estadísticas
                     _buildSectionCard(
                       title: "Estadísticas",
                       items: [
@@ -406,35 +656,8 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                     ),
                     const SizedBox(height: 20),
                     
-                    // Tarjeta del menú de opciones idéntica a settings
-                    _buildSectionCard(
-                      title: "Opciones de cuenta",
-                      items: [
-                        _buildRowItem(
-                          icon: Icons.person_outline,
-                          label: "Información personal",
-                          onTap: () {},
-                        ),
-                        _buildDivider(),
-                        _buildRowItem(
-                          icon: Icons.notifications_none,
-                          label: "Notificaciones",
-                          onTap: () {},
-                        ),
-                        _buildDivider(),
-                        _buildRowItem(
-                          icon: Icons.privacy_tip_outlined,
-                          label: "Privacidad",
-                          onTap: () {},
-                        ),
-                        _buildDivider(),
-                        _buildRowItem(
-                          icon: Icons.info_outline,
-                          label: "Información",
-                          onTap: () {},
-                        ),
-                      ],
-                    ),
+                    // Tarjeta: Apartado de Amistades (Pestañas Amigos / Solicitudes)
+                    _buildFriendsCard(),
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -443,7 +666,6 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
           ),
         ],
       ),
-      // Barra inferior unificada con Liquid Glass amarillo, borde brillante y efecto 3D
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
@@ -470,14 +692,10 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/user_icon.png', 0),
-                      _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/Map_icon.png', 1),
-                      _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
-                      _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/user_icon.png', 0),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Map_icon.png', 1),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
+                      _buildNavBarItem('assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
                     ],
                   ),
                 ),
@@ -485,6 +703,324 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFriendsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6B86C4).withAlpha(160),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withAlpha(50), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Text(
+                  "Amistades",
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: _showAddFriendDialog,
+                icon: const Icon(Icons.person_add_alt_1, color: Colors.white, size: 22),
+                tooltip: "Añadir amigo",
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(40),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedFriendsTab = 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _selectedFriendsTab == 0
+                            ? AppColors.primaryYellow
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        "Amigos (${_confirmedFriends.length})",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedFriendsTab == 0 ? Colors.black87 : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedFriendsTab = 1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _selectedFriendsTab == 1
+                            ? AppColors.primaryYellow
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            "Solicitudes",
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedFriendsTab == 1 ? Colors.black87 : Colors.white,
+                            ),
+                          ),
+                          if (_pendingRequests.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE64638),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                "${_pendingRequests.length}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          if (_loadingFriends)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              ),
+            )
+          else if (_selectedFriendsTab == 0)
+            if (_confirmedFriends.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Center(
+                  child: Text(
+                    "Aún no tienes amigos agregados.",
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: _confirmedFriends.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  final profile = item['profile'] as Map<String, dynamic>;
+                  final streakCount = item['streak_count'] as int;
+
+                  return Column(
+                    children: [
+                      _buildFriendStreakItem(
+                        name: profile['nickname'] ?? 'Sin apodo',
+                        avatarUrl: profile['avatar_url'],
+                        streakDays: streakCount,
+                      ),
+                      if (index < _confirmedFriends.length - 1) _buildDivider(),
+                    ],
+                  );
+                }).toList(),
+              )
+          else
+            if (_pendingRequests.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Center(
+                  child: Text(
+                    "No tienes solicitudes pendientes.",
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: _pendingRequests.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  final profile = item['profile'] as Map<String, dynamic>;
+                  final friendshipId = item['friendship_id'] as String;
+
+                  return Column(
+                    children: [
+                      _buildPendingRequestItem(
+                        friendshipId: friendshipId,
+                        name: profile['nickname'] ?? 'Sin apodo',
+                        avatarUrl: profile['avatar_url'],
+                      ),
+                      if (index < _pendingRequests.length - 1) _buildDivider(),
+                    ],
+                  );
+                }).toList(),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFriendStreakItem({
+    required String name,
+    required String? avatarUrl,
+    required int streakDays,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.white24,
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+            child: avatarUrl == null
+                ? Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(50),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.local_fire_department, color: Colors.orangeAccent, size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  "$streakDays",
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingRequestItem({
+    required String friendshipId,
+    required String name,
+    required String? avatarUrl,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.white24,
+            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+            child: avatarUrl == null
+                ? Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Colors.white,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.check_circle, color: Colors.greenAccent, size: 26),
+            onPressed: () => _respondToRequest(friendshipId, true),
+            tooltip: "Aceptar",
+          ),
+          IconButton(
+            icon: const Icon(Icons.cancel, color: Color(0xFFE64638), size: 26),
+            onPressed: () => _respondToRequest(friendshipId, false),
+            tooltip: "Rechazar",
+          ),
+        ],
       ),
     );
   }
@@ -498,9 +1034,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
         decoration: BoxDecoration(
           color: isSelected ? AppColors.textWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? Border.all(color: Colors.white, width: 1.5)
-              : null,
+          border: isSelected ? Border.all(color: Colors.white, width: 1.5) : null,
           boxShadow: isSelected
               ? [
                   BoxShadow(
@@ -526,7 +1060,6 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
     );
   }
 
-  // Conserva los colores originales de los iconos (amber) y textos oscuros dentro de las estadísticas
   Widget _buildStatItem(IconData icon, String label, String value) {
     return Column(
       children: [
@@ -538,7 +1071,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
             fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
             fontSize: 12,
-            color: Colors.white, // Blanco para que resalte sobre el fondo de la tarjeta
+            color: Colors.white,
           ),
         ),
         Text(
@@ -609,39 +1142,6 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
           ),
           ...items,
         ],
-      ),
-    );
-  }
-
-  Widget _buildRowItem({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      splashColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        child: Row(
-          children: [
-            Icon(icon, color: const Color(0xFF1E3A8A), size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF1E3A8A)),
-          ],
-        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/auth/models/signup_flow_model.dart';
+import 'package:nicalingo/features/auth/screens/verify_code_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   final SignupFlowModel signupData;
@@ -62,68 +63,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final passwordText = _passwordController.text.trim();
         final supabase = Supabase.instance.client;
 
-        final AuthResponse authResponse = await supabase.auth.signUp(
+        // 1. Registra al usuario en Auth y envía el correo de 8 dígitos
+        await supabase.auth.signUp(
           email: emailText,
           password: passwordText,
         );
 
-        final user = authResponse.user;
-
-        if (user != null) {
-          await supabase.from('profiles').upsert({
-            'id': user.id,
-            'email': emailText,
-            'nickname': widget.signupData.nickname,
-            'avatar_url': widget.signupData.avatarUrl,
-            'updated_at': DateTime.now().toIso8601String(),
-          });
-
-          if (widget.signupData.languageId != null) {
-            final int? langId = int.tryParse(widget.signupData.languageId!);
-
-            if (langId != null) {
-              final levelResponse = await supabase
-                  .from('levels')
-                  .select('id')
-                  .eq('language_id', langId)
-                  .eq('level_number', 1)
-                  .maybeSingle();
-
-              final int? levelId = levelResponse != null ? levelResponse['id'] as int? : null;
-
-              await supabase.from('user_progress').upsert({
-                'user_id': user.id,
-                'language_id': langId,
-                'current_level_id': levelId,
-                'last_activity': DateTime.now().toIso8601String(),
-              });
-            }
-          }
-        }
-
+        // Guardado de estado pendiente en almacenamiento local
         final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('pending_verification', true);
         await prefs.setString('temp_email', emailText);
-        await prefs.setString('temp_password', passwordText);
+        await prefs.setString('temp_nickname', widget.signupData.nickname ?? '');
+        await prefs.setString('temp_avatar', widget.signupData.avatarUrl ?? '');
+        await prefs.setString('temp_language', widget.signupData.languageId ?? '');
 
+        // Verificación de montado tras todos los await y antes de usar context
         if (!mounted) return;
-        Navigator.pop(context);
 
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('¡Verifica tu correo!'),
-            content: Text(
-              'Hemos enviado un enlace de confirmación a:\n\n$emailText\n\nPor favor, ve a tu correo, confirma tu cuenta y luego regresa a abrir la aplicación.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-                child: const Text('Entendido'),
-              ),
-            ],
+        Navigator.pop(context); // Cierra el indicador de carga
+
+        // 2. Pasamos el modelo completo de datos a la pantalla de verificación
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VerifyCodeScreen(signupData: widget.signupData),
           ),
         );
       } catch (e) {
