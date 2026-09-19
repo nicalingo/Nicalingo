@@ -67,8 +67,8 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Compilar Web (con base-href para dominio raíz)
-        run: flutter build web --release --base-href /
+      - name: Compilar Web (con base-href para GitHub Pages)
+        run: flutter build web --release --base-href /Nicalingo/
 
       - name: Comprimir Web en ZIP para el Release
         run: zip -r nicalingo_web.zip build/web
