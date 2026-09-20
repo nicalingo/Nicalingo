@@ -99,6 +99,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configurar NuGet (Requerido para plugins C++ de audio en Windows)
+        uses: nuget/setup-nuget@v2
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
