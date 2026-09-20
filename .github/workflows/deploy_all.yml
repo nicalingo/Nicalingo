@@ -99,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configurar NuGet (Requerido para plugins C++ de audio en Windows)
+      - name: Configurar NuGet
         uses: nuget/setup-nuget@v2
 
       - name: Configurar Flutter
@@ -107,6 +107,9 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Habilitar compilación Windows Desktop
+        run: flutter config --enable-windows-desktop
 
       - name: Instalar dependencias
         run: flutter pub get
