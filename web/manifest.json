@@ -1,11 +1,11 @@
 {
-    "name": "nicalingo",
-    "short_name": "nicalingo",
+    "name": "Nicalingo",
+    "short_name": "Nicalingo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Leccion a leccion",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
