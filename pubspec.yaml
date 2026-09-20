@@ -1,5 +1,5 @@
 name: nicalingo
-description: "A new Flutter project."
+description: "NicaLingo - Lección a lección"
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -16,6 +16,11 @@ dependencies:
   package_info_plus: ^8.0.0
   http: ^1.2.0
   url_launcher: ^6.3.0
+
+  # Grabación y manejo de archivos de audio
+  record: ^5.1.2
+  path_provider: ^2.1.2
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:
