@@ -165,6 +165,15 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Future<void> _deductLifeOnMistake() async {
+    // FIX 3: Actualización optimista de UI para respuesta rápida visual
+    if (mounted) {
+      setState(() {
+        if (currentLives > 0) {
+          currentLives--;
+        }
+      });
+    }
+
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
@@ -174,16 +183,16 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
         params: {'user_uuid': user.id},
       );
 
-      final int remainingLives =
-          (remaining as int?) ?? (currentLives > 0 ? currentLives - 1 : 0);
+      final int dbRemainingLives = (remaining as int?) ?? currentLives;
 
-      if (mounted) {
+      // Sincronizar por si la base de datos devuelve algo distinto al cálculo local
+      if (mounted && currentLives != dbRemainingLives) {
         setState(() {
-          currentLives = remainingLives;
+          currentLives = dbRemainingLives;
         });
       }
 
-      if (remainingLives <= 0 && mounted) {
+      if (currentLives <= 0 && mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
