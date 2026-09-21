@@ -3,8 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
-// ¡ESTE ES EL CAMBIO CLAVE! Usar el paquete universal_io en lugar de dart:io o condicionales
-import 'package:universal_io/io.dart';
+// Importación condicional MÁGICA:
+// El compilador carga file_reader_web.dart si compila para JS/Web,
+// y file_reader_native.dart si compila para Android/Windows.
+import 'file_reader_stub.dart'
+    if (dart.library.io) 'file_reader_native.dart'
+    if (dart.library.js_interop) 'file_reader_web.dart';
 
 class AudioRecorderService {
   final AudioRecorder _recorder = AudioRecorder();
@@ -26,7 +30,6 @@ class AudioRecorderService {
 
       String path = '';
 
-      // En móvil y Windows guardamos en un archivo temporal
       if (!kIsWeb) {
         final tempDir = await getTemporaryDirectory();
         path = '${tempDir.path}/user_speech_${DateTime.now().millisecondsSinceEpoch}.wav';
@@ -53,19 +56,12 @@ class AudioRecorderService {
       if (path == null) return null;
 
       if (kIsWeb) {
-        // En Web, 'path' es una URL Blob temporal (blob:http...)
+        // En Web, descargamos el Blob generado en memoria
         final response = await http.get(Uri.parse(path));
         return response.bodyBytes;
       } else {
-        // En Android y Windows usamos File de universal_io
-        final file = File(path);
-        if (await file.exists()) {
-          final bytes = await file.readAsBytes();
-          try {
-            await file.delete();
-          } catch (_) {}
-          return bytes;
-        }
+        // En Android/Windows, la magia condicional lee el File real
+        return await readAndClearFileBytes(path);
       }
     } catch (e) {
       debugPrint("Error al detener grabación: $e");
