@@ -1,8 +1,10 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
+// Import condicional: en Web carga una alternativa vacía y en nativo usa dart:io
+import 'dart:io' if (dart.library.js_interop) 'dart:html' as universal_io;
 
 class AudioRecorderService {
   final AudioRecorder _recorder = AudioRecorder();
@@ -23,7 +25,7 @@ class AudioRecorderService {
       if (!await hasPermission()) return;
 
       String path = '';
-      
+
       // En móvil y Windows guardamos en un archivo temporal
       if (!kIsWeb) {
         final tempDir = await getTemporaryDirectory();
@@ -51,20 +53,30 @@ class AudioRecorderService {
       if (path == null) return null;
 
       if (kIsWeb) {
-        // En Web, 'path' es una URL Blob temporal
+        // En Web, 'path' es una URL Blob temporal (blob:http...)
         final response = await http.get(Uri.parse(path));
         return response.bodyBytes;
       } else {
-        // En Android / Windows leemos el archivo local
-        final file = File(path);
-        if (await file.exists()) {
-          final bytes = await file.readAsBytes();
-          await file.delete(); // Limpiamos el archivo temporal
-          return bytes;
-        }
+        // En Android y Windows usamos la lectura segura de bytes nativos
+        return await _readNativeBytesSafely(path);
       }
     } catch (e) {
       debugPrint("Error al detener grabación: $e");
+    }
+    return null;
+  }
+
+  /// Lectura protegida para que el compilador Web no detecte clases File de dart:io
+  Future<Uint8List?> _readNativeBytesSafely(String path) async {
+    if (!kIsWeb) {
+      final file = universal_io.File(path);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        try {
+          await file.delete();
+        } catch (_) {}
+        return bytes;
+      }
     }
     return null;
   }
