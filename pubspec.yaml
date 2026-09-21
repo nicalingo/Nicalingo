@@ -21,6 +21,7 @@ dependencies:
   record: ^5.2.0
   path_provider: ^2.1.2
   audioplayers: ^6.0.0
+  universal_io: ^2.2.2
 
 dev_dependencies:
   flutter_test:
