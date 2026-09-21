@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
@@ -28,16 +29,39 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   int totalErrorsCommitted = 0;
   int accumulatedXp = 0;
 
-  // Errores y XP de la lección individual recién completada
   int lastLessonErrors = 0;
   int lastLessonXp = 0;
 
-  // Historial de errores por lección para colorear la barra
   final List<int> lessonErrorsHistory = [];
 
   bool isLevelFinished = false;
-  bool isShowingLessonSummary = false; // Control de pantalla intermedia lección a lección
+  bool isShowingLessonSummary = false;
   bool isSaving = false;
+
+  // Variables para control de tiempo y XP histórico
+  late DateTime _levelStartTime;
+  Duration _levelDuration = Duration.zero;
+  int _previousMaxXp = 0;
+  int _newFinalXpToAward = 0;
+
+  final Random _random = Random();
+  String _currentFeedbackMessage = "";
+
+  final List<String> _successMessages = [
+    "¡Excelente trabajo! Lo hiciste perfecto.",
+    "¡Vas por buen camino, seguí así!",
+    "¡Sos un crack! Muy bien hecho.",
+    "¡Machete estate en tu vaina! Lección dominada.",
+    "¡Qué bárbaro! Cero errores."
+  ];
+
+  final List<String> _encouragingMessages = [
+    "¡No te ahueves! A la próxima sale mejor.",
+    "Los errores te hacen más fuerte. ¡Dale otra vez!",
+    "¡Casi casi! Sigue practicando.",
+    "Un pequeño tropezón, pero vas avanzando.",
+    "¡Tranquilo! De los errores se aprende."
+  ];
 
   Map<String, dynamic> get currentLesson =>
       widget.lessonsList.isNotEmpty &&
@@ -48,11 +72,54 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
   List<dynamic> get questions =>
       (currentLesson['questions'] as List<dynamic>?) ?? [];
 
+  @override
+  void initState() {
+    super.initState();
+    _levelStartTime = DateTime.now();
+    _fetchPreviousProgress();
+  }
+
+  // Traemos el récord anterior para no duplicar XP
+  Future<void> _fetchPreviousProgress() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final response = await supabase
+          .from('user_progress')
+          .select('earned_xp')
+          .eq('user_id', user.id)
+          .eq('language_id', widget.languageId)
+          .eq('level_id', widget.levelId)
+          .maybeSingle();
+
+      if (response != null && response['earned_xp'] != null) {
+        if (mounted) {
+          setState(() {
+            _previousMaxXp = (response['earned_xp'] as num).toInt();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("⚠️ Aviso: No se encontró XP previo o falta la columna: $e");
+    }
+  }
+
   void _onLessonFinished({required int errorsInLesson}) {
-    final int xpEarned = (currentLesson['xpReward'] as num? ??
+    int xpEarned = (currentLesson['xpReward'] as num? ??
             currentLesson['xp_reward'] as num? ??
             15)
         .toInt();
+
+    if (errorsInLesson > 0) {
+      xpEarned = 0;
+      _currentFeedbackMessage =
+          _encouragingMessages[_random.nextInt(_encouragingMessages.length)];
+    } else {
+      _currentFeedbackMessage =
+          _successMessages[_random.nextInt(_successMessages.length)];
+    }
 
     setState(() {
       lastLessonErrors = errorsInLesson;
@@ -61,7 +128,6 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       totalErrorsCommitted += errorsInLesson;
       accumulatedXp += xpEarned;
 
-      // Mostramos la pantalla de felicitaciones de la lección terminada
       isShowingLessonSummary = true;
     });
   }
@@ -73,7 +139,12 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
         isShowingLessonSummary = false;
       });
     } else {
-      // Llegó al final del conjunto de lecciones del nivel
+      _levelDuration = DateTime.now().difference(_levelStartTime);
+      
+      // Calculamos solo el XP que falta por reclamar
+      int difference = accumulatedXp - _previousMaxXp;
+      _newFinalXpToAward = difference > 0 ? difference : 0;
+
       setState(() {
         isShowingLessonSummary = false;
         isLevelFinished = true;
@@ -94,42 +165,53 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
 
       final int targetLevelId = widget.levelId;
       final int targetLanguageId = widget.languageId;
-      debugPrint("🚀 Guardando progreso: user_id=${user.id}, language_id=$targetLanguageId, level_id=$targetLevelId");
 
-      final response = await supabase.from('user_progress').upsert(
+      final existingProgress = await supabase
+          .from('user_progress')
+          .select('current_level_id')
+          .eq('user_id', user.id)
+          .eq('language_id', targetLanguageId)
+          .maybeSingle();
+
+      int highestLevelId = targetLevelId;
+      if (existingProgress != null &&
+          existingProgress['current_level_id'] != null) {
+        final currentHighest = existingProgress['current_level_id'] as int;
+        if (currentHighest > targetLevelId) {
+          highestLevelId = currentHighest;
+        }
+      }
+
+      await supabase.from('user_progress').upsert(
         {
           'user_id': user.id,
           'language_id': targetLanguageId,
           'level_id': targetLevelId,
-          'current_level_id': targetLevelId,
+          'current_level_id': highestLevelId,
+          'earned_xp': max(_previousMaxXp, accumulatedXp), // Guarda el mayor puntaje logrado
           'is_completed': true,
           'last_activity': DateTime.now().toUtc().toIso8601String(),
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
-        onConflict: 'user_id, language_id',
+        // ATENCIÓN: El conflicto ahora incluye level_id para mantener un registro por nivel
+        onConflict: 'user_id, language_id, level_id',
       ).select();
 
-      debugPrint("✅ RESPUESTA SUPABASE user_progress: $response");
-
-      // Disparar cálculo y persistencia de la racha diaria
       try {
-        final newStreak = await supabase.rpc(
-          'update_user_streak',
-          params: {'user_uuid': user.id},
-        );
-        debugPrint("🔥 Racha sincronizada correctamente: $newStreak");
+        await supabase.rpc('update_user_streak', params: {'user_uuid': user.id});
+        
+        // Si tuvieras un RPC para sumar el XP global a la cuenta, deberías enviarle _newFinalXpToAward aquí.
+        // Ejemplo: await supabase.rpc('add_global_xp', params: {'user_uuid': user.id, 'xp': _newFinalXpToAward});
+        
       } catch (streakError) {
         debugPrint("⚠️ Aviso actualizando racha: $streakError");
       }
-    } catch (e, stack) {
-      debugPrint("❌ ERROR GUARDANDO PROGRESO: $e");
-      debugPrint("❌ STACK: $stack");
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error guardando progreso: $e'),
             backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -140,6 +222,15 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     }
   }
 
+  String _formatDuration(Duration duration) {
+    String minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
+    String seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    if (duration.inHours > 0) {
+      return "${duration.inHours}:$minutes:$seconds";
+    }
+    return "$minutes:$seconds";
+  }
+
   String _resolveLessonType(Map<String, dynamic> lesson) {
     final rawType =
         (lesson['lessonType'] ?? lesson['lesson_type'] ?? 'multiple_choice')
@@ -148,13 +239,11 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
             .toLowerCase();
 
     switch (rawType) {
-      // Tipos para fonética y reconocimiento de voz (Lección 1 Figma)
       case 'pronunciation':
       case 'fonetica':
       case 'speech':
       case 'habla':
         return 'pronunciation';
-      // Tipos para completar la frase (Lección 2 Figma)
       case 'fill_blank':
       case 'completa_frase':
       case 'completar_frase':
@@ -181,17 +270,14 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Pantalla final cuando termina todo el nivel
     if (isLevelFinished) {
       return _buildFinalLevelScreen();
     }
 
-    // 2. Pantalla intermedia al completar cada lección individual
     if (isShowingLessonSummary) {
       return _buildLessonSummaryScreen();
     }
 
-    // 3. Fallback de preguntas vacías
     if (questions.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _onLessonFinished(errorsInLesson: 0);
@@ -204,13 +290,10 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       );
     }
 
-    final String resolvedLessonType = _resolveLessonType(currentLesson);
-
-    // 4. Contenedor de la lección activa
     return LessonTemplateContainer(
       key: ValueKey("lesson_${widget.levelId}_$currentLessonIndex"),
       lessonTitle: currentLesson['title'] ?? widget.levelTitle,
-      lessonType: resolvedLessonType,
+      lessonType: _resolveLessonType(currentLesson),
       questions: questions,
       currentIndexLesson: currentLessonIndex,
       totalLessons: widget.lessonsList.length,
@@ -221,9 +304,14 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     );
   }
 
-  /// Vista intermedia: Aparece al terminar cada lección individual
   Widget _buildLessonSummaryScreen() {
-    final bool isLastLesson = currentLessonIndex >= widget.lessonsList.length - 1;
+    final bool isLastLesson =
+        currentLessonIndex >= widget.lessonsList.length - 1;
+    final bool isPerfect = lastLessonErrors == 0;
+    
+    final String imagePath = isPerfect 
+        ? 'assets/images/coco_feliz.png' 
+        : 'assets/images/coco_ups.png';
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
@@ -248,30 +336,35 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const FaIcon(
-                    FontAwesomeIcons.circleCheck,
-                    size: 68,
-                    color: Color(0xFF4ADE80),
+                  Image.asset(
+                    imagePath,
+                    height: 140,
+                    errorBuilder: (context, error, stackTrace) => FaIcon(
+                      isPerfect ? FontAwesomeIcons.circleCheck : FontAwesomeIcons.circleExclamation,
+                      size: 80,
+                      color: isPerfect ? const Color(0xFF4ADE80) : const Color(0xFFFF5252),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    "¡LECCIÓN ${currentLessonIndex + 1} COMPLETADA!",
-                    style: const TextStyle(
+                    isPerfect ? "¡LECCIÓN COMPLETADA!" : "¡LECCIÓN FINALIZADA!",
+                    style: TextStyle(
                       fontFamily: 'Noot',
-                      color: Colors.white,
+                      color: isPerfect ? const Color(0xFF4ADE80) : AppColors.primaryYellow,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.1,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Text(
-                    currentLesson['title'] ?? widget.levelTitle,
+                    _currentFeedbackMessage,
                     style: const TextStyle(
                       fontFamily: 'Inter',
-                      color: Colors.white70,
+                      color: Colors.white,
                       fontSize: 16,
+                      fontWeight: FontWeight.w600,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -288,13 +381,13 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _metricBadge(
-                          icon: lastLessonErrors == 0
+                          icon: isPerfect
                               ? FontAwesomeIcons.circleCheck
                               : FontAwesomeIcons.circleXmark,
-                          label: lastLessonErrors == 0
+                          label: isPerfect
                               ? "0 Errores"
-                              : "$lastLessonErrors ${lastLessonErrors == 1 ? 'Error' : 'Errores'}",
-                          color: lastLessonErrors == 0
+                              : "$lastLessonErrors Errores",
+                          color: isPerfect
                               ? const Color(0xFF4ADE80)
                               : const Color(0xFFFF5252),
                         ),
@@ -334,9 +427,30 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     );
   }
 
-  /// Vista final: Aparece únicamente cuando se completaron todas las lecciones del nivel
   Widget _buildFinalLevelScreen() {
-    final bool isPerfect = totalErrorsCommitted == 0;
+    String finalImagePath;
+    String titleText;
+    String customMessage;
+    Color titleColor;
+
+    if (totalErrorsCommitted == 0) {
+      finalImagePath = 'assets/images/coco_espada.png';
+      titleText = "¡CLASE PERFECTA!";
+      titleColor = AppColors.primaryYellow;
+      customMessage = _levelDuration.inMinutes <= widget.lessonsList.length
+          ? "¡Impecable y veloz! Eres una leyenda completando niveles."
+          : "¡Sin un solo error! Tienes un dominio absoluto de esta lección.";
+    } else if (totalErrorsCommitted <= widget.lessonsList.length) {
+      finalImagePath = 'assets/images/coco_feliz.png';
+      titleText = "¡NIVEL COMPLETADO!";
+      titleColor = const Color(0xFF4ADE80);
+      customMessage = "¡Muy buen trabajo! Completaste el nivel de manera satisfactoria, sigue así.";
+    } else {
+      finalImagePath = 'assets/images/coco_ups.png';
+      titleText = "¡NIVEL FINALIZADO!";
+      titleColor = const Color(0xFFFF5252);
+      customMessage = "Te costó un poco, pero no te rindas. ¡Repite el nivel para mejorar tu récord!";
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
@@ -361,18 +475,22 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const FaIcon(
-                    FontAwesomeIcons.trophy,
-                    size: 72,
-                    color: AppColors.primaryYellow,
+                  Image.asset(
+                    finalImagePath,
+                    height: 150,
+                    errorBuilder: (context, error, stackTrace) => FaIcon(
+                      FontAwesomeIcons.trophy,
+                      size: 80,
+                      color: AppColors.primaryYellow,
+                    ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    "¡NIVEL COMPLETADO!",
+                  Text(
+                    titleText,
                     style: TextStyle(
                       fontFamily: 'Noot',
-                      color: Colors.white,
-                      fontSize: 28,
+                      color: titleColor,
+                      fontSize: 26,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.2,
                     ),
@@ -380,40 +498,50 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    "Has completado todas las lecciones de ${widget.levelTitle}",
+                    customMessage,
                     style: const TextStyle(
                       fontFamily: 'Inter',
-                      color: Colors.white70,
-                      fontSize: 16,
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
+                  
                   Row(
                     children: [
                       Expanded(
                         child: _metricBadge(
                           icon: FontAwesomeIcons.star,
-                          label: "+$accumulatedXp XP",
+                          // Muestra únicamente el XP que realmente le falta sumar a su cuenta
+                          label: "+$_newFinalXpToAward XP",
                           color: AppColors.primaryYellow,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: _metricBadge(
-                          icon: isPerfect
+                          icon: totalErrorsCommitted == 0
                               ? FontAwesomeIcons.circleCheck
                               : FontAwesomeIcons.circleXmark,
-                          label: isPerfect
-                              ? "0 Errores"
-                              : "$totalErrorsCommitted ${totalErrorsCommitted == 1 ? 'Error' : 'Errores'}",
-                          color: isPerfect
+                          label: totalErrorsCommitted == 0
+                              ? "Perfecto"
+                              : "$totalErrorsCommitted Err",
+                          color: totalErrorsCommitted == 0
                               ? const Color(0xFF4ADE80)
                               : const Color(0xFFFF5252),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  _metricBadge(
+                    icon: FontAwesomeIcons.stopwatch,
+                    label: "Tiempo: ${_formatDuration(_levelDuration)}",
+                    color: const Color(0xFF38BDF8),
+                  ),
+                  
                   const SizedBox(height: 36),
                   SizedBox(
                     width: double.infinity,
