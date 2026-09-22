@@ -17,7 +17,8 @@ class ProfileCaptureScreen extends StatefulWidget {
 }
 
 class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
-  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _nicknameController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
   bool _isLoading = false;
@@ -29,10 +30,13 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
   }
 
   void _loadInitialUserData() {
+    if (widget.signupData?.fullName != null &&
+        widget.signupData!.fullName!.isNotEmpty) {
+      _fullNameController.text = widget.signupData!.fullName!;
+    }
     if (widget.signupData?.nickname != null &&
         widget.signupData!.nickname!.isNotEmpty) {
-      _nameController.text = widget.signupData!.nickname!;
-      return;
+      _nicknameController.text = widget.signupData!.nickname!;
     }
 
     final user = Supabase.instance.client.auth.currentUser;
@@ -40,8 +44,8 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
       final metaName = user.userMetadata?['full_name'] ??
           user.userMetadata?['name'] ??
           '';
-      if (metaName.isNotEmpty) {
-        _nameController.text = metaName;
+      if (metaName.isNotEmpty && _fullNameController.text.isEmpty) {
+        _fullNameController.text = metaName;
       }
     }
   }
@@ -118,12 +122,55 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
     );
   }
 
+  // Verifica en Supabase si el apodo ya existe
+  Future<bool> _isNicknameAvailable(String nickname, String? currentUserId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      var query = supabase
+          .from('profiles')
+          .select('id')
+          .ilike('nickname', nickname.trim());
+
+      if (currentUserId != null) {
+        query = query.neq('id', currentUserId);
+      }
+
+      final List<dynamic> response = await query;
+      return response.isEmpty;
+    } catch (e) {
+      debugPrint('Error al validar apodo: $e');
+      return true;
+    }
+  }
+
   Future<void> _handleEntrar() async {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
+    final fullName = _fullNameController.text.trim();
+    final nickname = _nicknameController.text.trim().toLowerCase();
+
+    if (fullName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Por favor, ingresá tu nombre'),
+          content: Text('Por favor, ingresá tu nombre completo'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (nickname.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, ingresá tu apodo'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (nickname.contains(' ')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El apodo no debe contener espacios'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -135,8 +182,23 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
-      String? avatarUrl;
 
+      // 1. Validar unicidad del apodo
+      final isAvailable = await _isNicknameAvailable(nickname, user?.id);
+      if (!isAvailable) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Este apodo ya está en uso. Elige otro.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 2. Subida de imagen al storage si existe
+      String? avatarUrl;
       if (_imageFile != null && user != null) {
         try {
           final fileExt = _imageFile!.path.split('.').last;
@@ -155,9 +217,11 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         }
       }
 
+      // 3. Flujo onboarding / registro: hereda fullName y nickname
       if (widget.signupData != null) {
         final updatedSignupData = widget.signupData!.copyWith(
-          nickname: name,
+          fullName: fullName,
+          nickname: nickname,
           avatarUrl: avatarUrl,
         );
 
@@ -173,11 +237,12 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         return;
       }
 
+      // 4. Guardado directo para usuarios ya logueados
       if (user != null) {
         final profileData = {
           'id': user.id,
-          'full_name': name,
-          'nickname': name,
+          'full_name': fullName,
+          'nickname': nickname,
           'updated_at': DateTime.now().toIso8601String(),
         };
 
@@ -205,12 +270,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
           backgroundColor: Colors.orange[800],
         ),
       );
-
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeMapScreen()),
-        (route) => false,
-      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -220,8 +279,72 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _fullNameController.dispose();
+    _nicknameController.dispose();
     super.dispose();
+  }
+
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            color: Colors.white70,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontFamily: 'Inter',
+                color: Colors.grey.shade500,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -232,16 +355,15 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         bottom: false,
         child: Column(
           children: [
-            // ================= HEADER SUPERIOR (AMARILLO NICALINGO) =================
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 15),
               child: Column(
                 children: [
                   Image.asset(
                     'assets/images/coco saludo.png',
-                    height: 95,
+                    height: 90,
                     errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.pets, size: 75, color: AppColors.textDark);
+                      return const Icon(Icons.pets, size: 70, color: AppColors.textDark);
                     },
                   ),
                   const SizedBox(height: 6),
@@ -249,35 +371,15 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                     'NicaLingo',
                     style: TextStyle(
                       fontFamily: 'Noot',
-                      fontSize: 34,
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textDark,
                       letterSpacing: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.textDark.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text(
-                      'Eslogan?',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textDark,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-
-            // ================= CONTENEDOR INFERIOR (AZUL NICALINGO) =================
             Expanded(
               child: Container(
                 width: double.infinity,
@@ -289,12 +391,12 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                   ),
                 ),
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(26, 28, 26, 24),
+                  padding: const EdgeInsets.fromLTRB(26, 24, 26, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '¿Cómo te llamás?',
+                        'Creá tu perfil',
                         style: TextStyle(
                           fontFamily: 'Noot',
                           fontSize: 26,
@@ -304,70 +406,33 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                       ),
                       const SizedBox(height: 4),
                       const Text(
-                        'Así te va a llamar Coco.',
+                        'Completá tus datos para empezar la aventura.',
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 14,
+                          fontSize: 13.5,
                           color: Colors.white70,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
 
-                      const Text(
-                        'DINOS TU APODO',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white70,
-                          letterSpacing: 0.8,
-                        ),
+                      // Campo 1: Nombre Completo
+                      _buildField(
+                        controller: _fullNameController,
+                        label: 'NOMBRE COMPLETO',
+                        hint: 'Ej. Juan Pérez',
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 16),
 
-                      // Input de texto redondeado
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(30),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.12),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _nameController,
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Ingresa tu nombre',
-                            hintStyle: TextStyle(
-                              fontFamily: 'Inter',
-                              color: Colors.grey.shade500,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                        ),
+                      // Campo 2: Apodo (Único)
+                      _buildField(
+                        controller: _nicknameController,
+                        label: 'TU APODO (ÚNICO)',
+                        hint: 'Ej. juancho99',
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 20),
 
-                      // ================= SELECTOR DE FOTO =================
+                      // Campo 3: Foto de Perfil
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -375,8 +440,8 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                             onTap: () => _pickImage(ImageSource.camera),
                             onLongPress: () => _pickImage(ImageSource.gallery),
                             child: Container(
-                              width: 88,
-                              height: 88,
+                              width: 84,
+                              height: 84,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(22),
@@ -405,18 +470,17 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                                         Icon(
                                           Icons.camera_alt_outlined,
                                           color: AppColors.primaryBlue,
-                                          size: 28,
+                                          size: 26,
                                         ),
                                         SizedBox(height: 4),
                                         Text(
-                                          'Sacate una\nfoto',
+                                          'Tu foto',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(
                                             fontFamily: 'Inter',
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
                                             color: AppColors.primaryBlue,
-                                            height: 1.15,
                                           ),
                                         ),
                                       ],
@@ -424,21 +488,21 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                                   : null,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Si no querés, no hace falta: coco te pondrá una fotico de susvacaciones pasadas. Mantené apretado para elegirla de la galería.',
+                                  'Tocá para abrir cámara o mantené apretado para galería.',
                                   style: TextStyle(
                                     fontFamily: 'Inter',
-                                    fontSize: 12.5,
+                                    fontSize: 12,
                                     color: Colors.white70,
-                                    height: 1.35,
+                                    height: 1.3,
                                   ),
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 5),
                                 GestureDetector(
                                   onTap: _showImageSourceDialog,
                                   child: const Text(
@@ -457,52 +521,40 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 34),
+                      const SizedBox(height: 28),
 
-                      // ================= BOTÓN ENTRAR =================
+                      // Botón Continuar
                       SizedBox(
                         width: double.infinity,
                         height: 52,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _handleEntrar,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryYellow,
-                              foregroundColor: AppColors.textDark,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _handleEntrar,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryYellow,
+                            foregroundColor: AppColors.textDark,
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
                             ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      color: AppColors.textDark,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Entrar',
-                                    style: TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textDark,
-                                    ),
-                                  ),
                           ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    color: AppColors.textDark,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Text(
+                                  'Continuar',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textDark,
+                                  ),
+                                ),
                         ),
                       ),
                     ],

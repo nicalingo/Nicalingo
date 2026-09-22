@@ -67,7 +67,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         if (!mounted) return;
         setState(() => _isLoading = false);
 
-        // Pasa a la pantalla de Figma con el saludo personalizado
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -92,10 +91,12 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         final user = response.user;
 
         if (user != null) {
+          // Inserción en la tabla profiles con full_name y nickname separados
           await supabase.from('profiles').upsert({
             'id': user.id,
             'email': widget.signupData.email,
             'role': 'user',
+            'full_name': widget.signupData.fullName,
             'nickname': widget.signupData.nickname,
             'avatar_url': widget.signupData.avatarUrl,
             'created_at': DateTime.now().toIso8601String(),
@@ -124,9 +125,11 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
             }
           }
 
+          // Limpiar datos temporales de SharedPreferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('pending_verification');
           await prefs.remove('temp_email');
+          await prefs.remove('temp_full_name');
           await prefs.remove('temp_nickname');
           await prefs.remove('temp_avatar');
           await prefs.remove('temp_language');
