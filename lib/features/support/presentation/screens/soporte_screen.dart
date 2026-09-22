@@ -24,6 +24,18 @@ class _SoporteScreenState extends State<SoporteScreen> {
   bool _enviando = false;
   File? _imagenSeleccionada;
   RealtimeChannel? _canalRealtime;
+  
+  // Nueva variable para el motivo obligatorio
+  String? _categoriaSeleccionada;
+
+  // Lista de categorías disponibles
+  final List<Map<String, String>> _categorias = [
+    {'value': 'duda', 'label': '❓ Duda'},
+    {'value': 'error', 'label': '🐛 Error'},
+    {'value': 'sugerencia', 'label': '💡 Sugerencia'},
+    {'value': 'pagos', 'label': '💳 Pagos'},
+    {'value': 'embajador', 'label': '🎖️ Embajador'},
+  ];
 
   @override
   void initState() {
@@ -118,6 +130,18 @@ class _SoporteScreenState extends State<SoporteScreen> {
     final texto = _mensajeController.text.trim();
     if (texto.isEmpty && _imagenSeleccionada == null) return;
 
+    // Validación obligatoria del motivo del mensaje
+    if (_categoriaSeleccionada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, selecciona un motivo para tu mensaje.'),
+          backgroundColor: Color(0xFFE64638),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,11 +170,12 @@ class _SoporteScreenState extends State<SoporteScreen> {
         imagenUrl = _supabase.storage.from('soporte_imagenes').getPublicUrl(nombreArchivo);
       }
 
-      // 2. Insertar mensaje en la BD
+      // 2. Insertar mensaje en la BD incluyendo la categoría
       await _supabase.from('mensajes_soporte').insert({
         'user_id': userId,
         'mensaje': texto.isEmpty ? 'Captura adjunta' : texto,
         'imagen_url': imagenUrl,
+        'categoria': _categoriaSeleccionada,
         'es_respuesta_admin': false,
       });
 
@@ -158,6 +183,7 @@ class _SoporteScreenState extends State<SoporteScreen> {
       setState(() {
         _imagenSeleccionada = null;
         _enviando = false;
+        // Opcional: _categoriaSeleccionada = null; si deseas que elijan en cada mensaje nuevo
       });
 
       _hacerScrollAlFinal();
@@ -344,9 +370,51 @@ class _SoporteScreenState extends State<SoporteScreen> {
                     ),
                   ),
 
+                // Selector de Motivos (Chips horizontales)
+                Padding(
+                  padding: const EdgeInsets.only(left: 18, right: 18, bottom: 8),
+                  child: SizedBox(
+                    height: 38,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _categorias.length,
+                      separatorBuilder: (context, index) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final cat = _categorias[index];
+                        final isSelected = _categoriaSeleccionada == cat['value'];
+                        return ChoiceChip(
+                          label: Text(cat['label']!),
+                          selected: isSelected,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              _categoriaSeleccionada = selected ? cat['value'] : null;
+                            });
+                          },
+                          selectedColor: const Color(0xFFFCE392), // Color Sinskira Butter
+                          backgroundColor: const Color(0xFF6B86C4).withAlpha(190),
+                          checkmarkColor: const Color(0xFF093E37),
+                          labelStyle: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isSelected ? const Color(0xFF093E37) : Colors.white,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: isSelected ? Colors.transparent : Colors.white.withAlpha(70),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
                 // Caja de texto inferior
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 14),
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(30),
                     child: BackdropFilter(
