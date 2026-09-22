@@ -5,6 +5,8 @@ import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
 import 'package:nicalingo/features/auth/screens/login_screen.dart';
+// Importación de la pantalla de soporte/comentarios que creamos
+import 'package:nicalingo/features/support/presentation/screens/soporte_screen.dart';
 
 class HomeSettingsScreen extends StatefulWidget {
   const HomeSettingsScreen({super.key});
@@ -440,13 +442,23 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                       _buildRowItem(
                         icon: Icons.help_outline,
                         label: "Centro de Ayuda",
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SoporteScreen()),
+                          );
+                        },
                       ),
                       _buildDivider(),
                       _buildRowItem(
                         icon: Icons.chat_bubble_outline,
                         label: "Envíanos tu opinión",
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SoporteScreen()),
+                          );
+                        },
                       ),
                       _buildDivider(),
                       _buildRowItem(
