@@ -63,26 +63,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final passwordText = _passwordController.text.trim();
         final supabase = Supabase.instance.client;
 
-        // 1. Registra al usuario en Auth y envía el correo de 8 dígitos
+        // 1. Registra al usuario en Auth y envía el correo con código OTP
         await supabase.auth.signUp(
           email: emailText,
           password: passwordText,
         );
 
-        // Guardado de estado pendiente en almacenamiento local
+        // Guardado de respaldo de todos los campos en SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('pending_verification', true);
         await prefs.setString('temp_email', emailText);
+        await prefs.setString('temp_full_name', widget.signupData.fullName ?? '');
         await prefs.setString('temp_nickname', widget.signupData.nickname ?? '');
         await prefs.setString('temp_avatar', widget.signupData.avatarUrl ?? '');
         await prefs.setString('temp_language', widget.signupData.languageId ?? '');
 
-        // Verificación de montado tras todos los await y antes de usar context
         if (!mounted) return;
 
         Navigator.pop(context); // Cierra el indicador de carga
 
-        // 2. Pasamos el modelo completo de datos a la pantalla de verificación
+        // 2. Pasamos el modelo completo a la pantalla de verificación
         Navigator.push(
           context,
           MaterialPageRoute(
