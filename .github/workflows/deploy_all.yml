@@ -35,11 +35,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 🟢 CORRECCIÓN: Limpiar caché antes de obtener dependencias
       - name: Instalar dependencias
         run: |
           flutter clean
-          flutter pub get
+          flutter pub upgrade
 
       - name: Compilar APK (Android)
         run: flutter build apk --release
@@ -70,7 +69,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           flutter clean
-          flutter pub get
+          flutter pub upgrade
 
       - name: Compilar Web (con base-href para GitHub Pages)
         run: flutter build web --release --base-href /Nicalingo/
@@ -119,7 +118,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           flutter clean
-          flutter pub get
+          flutter pub upgrade
 
       - name: Compilar Windows
         run: flutter build windows --release

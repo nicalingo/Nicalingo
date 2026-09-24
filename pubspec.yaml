@@ -23,10 +23,6 @@ dependencies:
   audioplayers: ^6.0.0
   universal_io: ^2.2.2
 
-# CORRECCIÓN: Forzamos esta versión exacta para evitar el error de firma en Android
-dependency_overrides:
-  record_platform_interface: 1.5.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
