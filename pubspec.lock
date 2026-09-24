@@ -761,7 +761,7 @@ packages:
     source: hosted
     version: "0.7.2"
   record_platform_interface:
-    dependency: "direct overridden"
+    dependency: transitive
     description:
       name: record_platform_interface
       sha256: "8a81dbc4e14e1272a285bbfef6c9136d070a47d9b0d1f40aa6193516253ee2f6"
