@@ -17,71 +17,13 @@ dependencies:
   http: ^1.2.0
   url_launcher: ^6.3.0
 
+  # Grabación y manejo de archivos de audio
   record: ^5.2.0
   path_provider: ^2.1.2
   audioplayers: ^6.0.0
   universal_io: ^2.2.2
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.8
-
-flutter_launcher_icons:
-  android: "launcher_icon"
-  ios: false
-  image_path: "assets/images/icono_app.png"
-  min_sdk_android: 21
-
-flutter_native_splash:
-  color: "#FFDE59"
-  image: "assets/images/icono_app.png"
-  android_12:
-    color: "#FFDE59"
-    image: "assets/images/icono_app.png"
-  fullscreen: true
-
-flutter:
-  uses-material-design: true
-
-  assets:
-    - assets/images/
-    - assets/images/Iconos/
-    - assets/images/Iconos/Icon_niveles/
-    - assets/images/Iconos/Icon_barra/
-    - assets/images/Iconos/background/
-
-  fonts:
-    - family: Noot
-      fonts:
-        - asset: assets/fonts/Noot.otf
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter.ttfname: nicalingo
-description: "NicaLingo - Lección a lección"
-publish_to: 'none'
-version: 0.1.1+2
-
-environment:
-  sdk: ^3.12.2
-
-dependencies:
-  flutter:
-    sdk: flutter
-  font_awesome_flutter: ^11.0.0
-  supabase_flutter: ^2.17.2
-  shared_preferences: ^2.5.4
-  image_picker: ^1.1.2
-  package_info_plus: ^8.0.0
-  http: ^1.2.0
-  url_launcher: ^6.3.0
-  record: ^5.2.0
-  path_provider: ^2.1.2
-  audioplayers: ^6.0.0
-  universal_io: ^2.2.2
-
+# CORRECCIÓN: Forzamos esta versión exacta para evitar el error de firma en Android
 dependency_overrides:
   record_platform_interface: 1.5.0
 
