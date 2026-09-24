@@ -166,11 +166,14 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
       final int targetLevelId = widget.levelId;
       final int targetLanguageId = widget.languageId;
 
+      //  CORREGIDO: Se añade order y limit(1) para evitar el error 406 de múltiples filas
       final existingProgress = await supabase
           .from('user_progress')
           .select('current_level_id')
           .eq('user_id', user.id)
           .eq('language_id', targetLanguageId)
+          .order('current_level_id', ascending: false)
+          .limit(1)
           .maybeSingle();
 
       int highestLevelId = targetLevelId;
@@ -193,16 +196,12 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
           'last_activity': DateTime.now().toUtc().toIso8601String(),
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         },
-        // ATENCIÓN: El conflicto ahora incluye level_id para mantener un registro por nivel
+        // Mantiene un registro individual por nivel
         onConflict: 'user_id, language_id, level_id',
       ).select();
 
       try {
         await supabase.rpc('update_user_streak', params: {'user_uuid': user.id});
-        
-        // Si tuvieras un RPC para sumar el XP global a la cuenta, deberías enviarle _newFinalXpToAward aquí.
-        // Ejemplo: await supabase.rpc('add_global_xp', params: {'user_uuid': user.id, 'xp': _newFinalXpToAward});
-        
       } catch (streakError) {
         debugPrint("⚠️ Aviso actualizando racha: $streakError");
       }
