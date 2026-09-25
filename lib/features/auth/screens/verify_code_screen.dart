@@ -34,7 +34,9 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
   }
 
   Future<void> _verifyOtp() async {
-    final token = _codeController.text.trim();
+    // Elimina cualquier espacio en blanco o salto de línea en el código
+    final token = _codeController.text.replaceAll(RegExp(r'\s+'), '').trim();
+
     if (token.length != 8) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -49,6 +51,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
 
     try {
       final supabase = Supabase.instance.client;
+      final email = widget.signupData.email.trim();
 
       // ==========================================
       // CASO A: RECUPERACIÓN DE CONTRASEÑA
@@ -57,7 +60,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         final recoveryResponse = await supabase.auth.verifyOTP(
           type: OtpType.recovery,
           token: token,
-          email: widget.signupData.email,
+          email: email,
         );
 
         if (recoveryResponse.session == null) {
@@ -84,17 +87,17 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
       final response = await supabase.auth.verifyOTP(
         type: OtpType.signup,
         token: token,
-        email: widget.signupData.email,
+        email: email,
       );
 
-      if (response.session != null) {
-        final user = response.user;
+      if (response.session != null || response.user != null) {
+        final user = response.user ?? supabase.auth.currentUser;
 
         if (user != null) {
-          // Inserción en la tabla profiles con full_name y nickname separados
+          // Inserción o actualización en la tabla profiles
           await supabase.from('profiles').upsert({
             'id': user.id,
-            'email': widget.signupData.email,
+            'email': email,
             'role': 'user',
             'full_name': widget.signupData.fullName,
             'nickname': widget.signupData.nickname,
@@ -157,7 +160,23 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
           (route) => false,
         );
       } else {
+        throw Exception('No se pudo verificar el código ingresado.');
+      }
+    } on AuthException catch (e) {
+      if (mounted) {
         setState(() => _isLoading = false);
+        String mensaje = 'Error al verificar: ${e.message}';
+        if (e.statusCode == '403' ||
+            e.message.toLowerCase().contains('expired') ||
+            e.message.toLowerCase().contains('invalid')) {
+          mensaje = 'El código ingresado es incorrecto o ha expirado.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(mensaje),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -176,15 +195,15 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
     if (_isResending) return;
     setState(() => _isResending = true);
 
+    final email = widget.signupData.email.trim();
+
     try {
       if (widget.isResetPassword) {
-        await Supabase.instance.client.auth.resetPasswordForEmail(
-          widget.signupData.email,
-        );
+        await Supabase.instance.client.auth.resetPasswordForEmail(email);
       } else {
         await Supabase.instance.client.auth.resend(
           type: OtpType.signup,
-          email: widget.signupData.email,
+          email: email,
         );
       }
 
