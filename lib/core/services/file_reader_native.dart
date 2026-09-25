@@ -1,8 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:path_provider/path_provider.dart';
+
+/// Obtiene la ruta temporal en sistemas de archivos nativos (Android, Windows, etc.)
+Future<String> getRecordingTempPath() async {
+  final tempDir = await getTemporaryDirectory();
+  return '${tempDir.path}/user_speech_${DateTime.now().millisecondsSinceEpoch}.wav';
+}
 
 /// Implementación nativa que lee y elimina el archivo WAV.
-/// Al estar aislado, el compilador web nunca verá este archivo.
 Future<Uint8List?> readAndClearFileBytes(String path) async {
   final file = File(path);
   if (await file.exists()) {

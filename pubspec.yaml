@@ -23,10 +23,6 @@ dependencies:
   audioplayers: ^6.0.0
   universal_io: ^2.2.2
 
-# 🟢 CORRECCIÓN DEFINITIVA: Forzamos la versión 1.2.0, que es la original y no incluye los cambios que rompen la compilación
-dependency_overrides:
-  record_platform_interface: 1.2.0
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
