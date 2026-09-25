@@ -34,7 +34,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
   }
 
   Future<void> _verifyOtp() async {
-    // Elimina cualquier espacio en blanco o salto de línea en el código
     final token = _codeController.text.replaceAll(RegExp(r'\s+'), '').trim();
 
     if (token.length != 8) {
@@ -49,13 +48,11 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
 
     setState(() => _isLoading = true);
 
-    try {
-      final supabase = Supabase.instance.client;
-      final email = widget.signupData.email.trim();
+    final supabase = Supabase.instance.client;
+    final email = widget.signupData.email.trim();
 
-      // ==========================================
-      // CASO A: RECUPERACIÓN DE CONTRASEÑA
-      // ==========================================
+    try {
+      // 1. Si es reseteo de contraseña (o intentamos primero como tal)
       if (widget.isResetPassword) {
         final recoveryResponse = await supabase.auth.verifyOTP(
           type: OtpType.recovery,
@@ -63,27 +60,23 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
           email: email,
         );
 
-        if (recoveryResponse.session == null) {
-          throw Exception('Código incorrecto o expirado.');
-        }
+        if (recoveryResponse.session != null) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
 
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ResetPasswordScreen(
-              nickname: widget.signupData.nickname ?? '',
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ResetPasswordScreen(
+                nickname: widget.signupData.nickname ?? '',
+              ),
             ),
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
 
-      // ==========================================
-      // CASO B: REGISTRO NUEVO DE USUARIO
-      // ==========================================
+      // 2. Si es registro (o fallback de registro)
       final response = await supabase.auth.verifyOTP(
         type: OtpType.signup,
         token: token,
@@ -94,7 +87,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         final user = response.user ?? supabase.auth.currentUser;
 
         if (user != null) {
-          // Inserción o actualización en la tabla profiles
           await supabase.from('profiles').upsert({
             'id': user.id,
             'email': email,
@@ -128,7 +120,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
             }
           }
 
-          // Limpiar datos temporales de SharedPreferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('pending_verification');
           await prefs.remove('temp_email');
@@ -159,10 +150,57 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
           ),
           (route) => false,
         );
-      } else {
-        throw Exception('No se pudo verificar el código ingresado.');
+        return;
       }
+
+      throw Exception('No se pudo verificar el código ingresado.');
     } on AuthException catch (e) {
+      // Intento inverso en caso de que la bandera viniera cambiada
+      try {
+        final fallbackType = widget.isResetPassword ? OtpType.signup : OtpType.recovery;
+        final fallbackRes = await supabase.auth.verifyOTP(
+          type: fallbackType,
+          token: token,
+          email: email,
+        );
+
+        if (fallbackRes.session != null) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+
+          if (fallbackType == OtpType.recovery) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ResetPasswordScreen(
+                  nickname: widget.signupData.nickname ?? '',
+                ),
+              ),
+            );
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TransitionSplashScreen(
+                  message: '¡Bienvenido a NicaLingo!',
+                  imagePath: 'assets/images/coco_feliz.png',
+                  onNavigation: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const HomeMapScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              (route) => false,
+            );
+          }
+          return;
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() => _isLoading = false);
         String mensaje = 'Error al verificar: ${e.message}';
@@ -247,17 +285,16 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (widget.isResetPassword)
-                        Align(
-                          alignment: Alignment.topLeft,
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-                            onPressed: () => Navigator.pop(context),
-                          ),
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
+                          onPressed: () => Navigator.pop(context),
                         ),
-                      const SizedBox(height: 10),
+                      ),
+                      const SizedBox(height: 5),
                       Text(
-                        'Confirmación de datos',
+                        widget.isResetPassword ? 'Recuperar Cuenta' : 'Confirmación de datos',
                         style: AppTextStyles.titleMediumNoot.copyWith(
                           fontSize: 26,
                           fontWeight: FontWeight.bold,
@@ -269,7 +306,9 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 40.0),
                           child: Image.asset(
-                            'assets/images/coco saludo.png',
+                            widget.isResetPassword
+                                ? 'assets/images/coco_ups.png'
+                                : 'assets/images/coco saludo.png',
                             fit: BoxFit.contain,
                             alignment: Alignment.bottomCenter,
                           ),
@@ -298,7 +337,9 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                         Column(
                           children: [
                             Text(
-                              'Enviaremos un código a tu correo\npara Confirmar tu identidad',
+                              widget.isResetPassword
+                                  ? 'Ingresa el código que enviamos a tu correo\npara cambiar tu contraseña'
+                                  : 'Enviaremos un código a tu correo\npara Confirmar tu identidad',
                               textAlign: TextAlign.center,
                               style: AppTextStyles.bodyMediumInter.copyWith(
                                 fontSize: 13,
@@ -311,7 +352,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                             GestureDetector(
                               onTap: _resendCode,
                               child: Text(
-                                _isResending ? 'Enviando...' : 'Enviar código',
+                                _isResending ? 'Enviando...' : 'Reenviar código',
                                 style: AppTextStyles.bodyMediumInter.copyWith(
                                   fontSize: 12,
                                   color: AppColors.secondarySkyBlue,
