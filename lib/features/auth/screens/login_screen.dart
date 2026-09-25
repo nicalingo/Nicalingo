@@ -41,13 +41,13 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
 
     try {
       final response = await Supabase.instance.client
           .from('profiles')
           .select('email')
-          .eq('email', email)
+          .ilike('email', email)
           .maybeSingle();
 
       final bool emailExisteEnBaseDeDatos = response != null;
