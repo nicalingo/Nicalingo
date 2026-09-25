@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
-// Importación condicional MÁGICA:
-// El compilador carga file_reader_web.dart si compila para JS/Web,
-// y file_reader_native.dart si compila para Android/Windows.
+// Importación condicional:
+// Carga file_reader_web.dart en Web y file_reader_native.dart en Android/Windows.
 import 'file_reader_stub.dart'
     if (dart.library.io) 'file_reader_native.dart'
     if (dart.library.js_interop) 'file_reader_web.dart';
@@ -28,12 +26,9 @@ class AudioRecorderService {
     try {
       if (!await hasPermission()) return;
 
-      String path = '';
-
-      if (!kIsWeb) {
-        final tempDir = await getTemporaryDirectory();
-        path = '${tempDir.path}/user_speech_${DateTime.now().millisecondsSinceEpoch}.wav';
-      }
+      // En Web se pasa cadena vacía (el plugin maneja un Blob en memoria).
+      // En móvil/escritorio se obtiene el path temporal aislado de path_provider.
+      final String path = kIsWeb ? '' : await getRecordingTempPath();
 
       await _recorder.start(
         const RecordConfig(
@@ -60,7 +55,7 @@ class AudioRecorderService {
         final response = await http.get(Uri.parse(path));
         return response.bodyBytes;
       } else {
-        // En Android/Windows, la magia condicional lee el File real
+        // En Android/Windows, lee y elimina el archivo físico
         return await readAndClearFileBytes(path);
       }
     } catch (e) {
