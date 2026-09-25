@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -390,16 +390,25 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
 
       setState(() => _isLoading = true);
 
-      final file = File(image.path);
-      final fileExt = image.path.split('.').last;
+      // Leemos directamente los bytes del XFile en memoria (funciona en Web, Android y Windows)
+      final Uint8List imageBytes = await image.readAsBytes();
+      final fileExt = image.name.split('.').last.toLowerCase();
       final fileName =
           '${user.id}-${DateTime.now().millisecondsSinceEpoch}.$fileExt';
       final filePath = 'avatars/$fileName';
 
-      await supabase.storage.from('profiles').upload(
+      final mimeType = fileExt == 'png'
+          ? 'image/png'
+          : (fileExt == 'webp' ? 'image/webp' : 'image/jpeg');
+
+      // Usamos uploadBinary en lugar de upload(File) para compatibilidad multiplataforma
+      await supabase.storage.from('profiles').uploadBinary(
             filePath,
-            file,
-            fileOptions: const FileOptions(upsert: true),
+            imageBytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: mimeType,
+            ),
           );
 
       final imageUrl =
