@@ -23,9 +23,10 @@ dependencies:
   audioplayers: ^6.0.0
   universal_io: ^2.2.2
 
-# 🟢 CORRECCIÓN DEFINITIVA: Forzamos la versión 1.2.0, que es la original y no incluye los cambios que rompen la compilación
+# 🟢 Alineación total: mantenemos la 1.2.0 para Android/Windows y ajustamos record_web para la interfaz 1.2.0
 dependency_overrides:
   record_platform_interface: 1.2.0
+  record_web: 1.1.2
 
 dev_dependencies:
   flutter_test:
