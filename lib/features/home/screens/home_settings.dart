@@ -5,7 +5,6 @@ import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
 import 'package:nicalingo/features/auth/screens/login_screen.dart';
-// Importación de la pantalla de soporte/comentarios que creamos
 import 'package:nicalingo/features/support/presentation/screens/soporte_screen.dart';
 
 class HomeSettingsScreen extends StatefulWidget {
