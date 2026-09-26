@@ -66,12 +66,13 @@ jobs:
           flutter build apk --release \
             --build-name=${{ needs.prepare-version.outputs.version_name }} \
             --build-number=${{ needs.prepare-version.outputs.build_number }}
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/Nicalingo.apk
 
       - name: Guardar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/Nicalingo.apk
 
   # ----------------------------------------------------
   # JOB 2: WEB (Compila y publica en GitHub Pages)
@@ -189,7 +190,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            release-files/app-release.apk
+            release-files/Nicalingo.apk
             release-files/nicalingo_web.zip
             release-files/nicalingo_windows.zip
         env:

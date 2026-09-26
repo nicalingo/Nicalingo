@@ -75,10 +75,14 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
 
       for (final asset in assets) {
         final name = (asset['name'] as String? ?? '').toLowerCase();
+
+        // Android: cualquier APK (Nicalingo.apk o app-release.apk)
         if (isAndroid && name.endsWith('.apk')) {
           downloadUrl = asset['browser_download_url'] as String?;
           break;
-        } else if (isWindows && name.endsWith('.zip')) {
+        } 
+        // Windows: DEBE contener "windows" y terminar en ".zip" o ".exe"
+        else if (isWindows && name.contains('windows') && (name.endsWith('.zip') || name.endsWith('.exe'))) {
           downloadUrl = asset['browser_download_url'] as String?;
           break;
         }
