@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
@@ -17,6 +21,91 @@ class HomeSettingsScreen extends StatefulWidget {
 class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   final int _currentIndex = 3;
   bool _soundEnabled = true;
+  bool _isDownloading = false;
+
+  // Solo se muestra si está en la Web Y el sistema operativo es compatible
+  bool get _canDownloadApp {
+    if (!kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.windows;
+  }
+
+  String get _downloadLabel {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return "Descargar App para Android (.apk)";
+    }
+    return "Descargar App para Windows (.zip)";
+  }
+
+  IconData get _downloadIcon {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return Icons.android_rounded;
+    }
+    return Icons.desktop_windows_rounded;
+  }
+
+  Future<void> _handleWebDownload() async {
+    if (_isDownloading) return;
+
+    setState(() => _isDownloading = true);
+
+    try {
+      final url = Uri.parse(
+        'https://api.github.com/repos/nicalingo/Nicalingo/releases/latest',
+      );
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'NicaLingo-Web',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) {
+        throw Exception("No se pudo obtener la información de la release");
+      }
+
+      final data = json.decode(response.body);
+      final List assets = data['assets'] as List? ?? [];
+      String? downloadUrl;
+
+      final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+      final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+
+      for (final asset in assets) {
+        final name = (asset['name'] as String? ?? '').toLowerCase();
+        if (isAndroid && name.endsWith('.apk')) {
+          downloadUrl = asset['browser_download_url'] as String?;
+          break;
+        } else if (isWindows && name.endsWith('.zip')) {
+          downloadUrl = asset['browser_download_url'] as String?;
+          break;
+        }
+      }
+
+      // Respaldo a la página principal del release si no encuentra el archivo directo
+      downloadUrl ??= data['html_url'] as String?;
+
+      if (downloadUrl != null) {
+        final uri = Uri.parse(downloadUrl);
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al obtener el enlace de descarga: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloading = false);
+      }
+    }
+  }
 
   void _onNavBarTap(int index) {
     if (index == _currentIndex) return;
@@ -459,6 +548,17 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                           );
                         },
                       ),
+
+                      // Botón dinámico: solo aparece en Web para Android o Windows
+                      if (_canDownloadApp) ...[
+                        _buildDivider(),
+                        _buildRowItem(
+                          icon: _downloadIcon,
+                          label: _isDownloading ? "Obteniendo instalador..." : _downloadLabel,
+                          onTap: _handleWebDownload,
+                        ),
+                      ],
+
                       _buildDivider(),
                       _buildRowItem(
                         icon: Icons.info_outline,
