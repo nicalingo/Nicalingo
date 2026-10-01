@@ -2,7 +2,6 @@
 
 NicaLingo es una plataforma digital educativa diseñada para la revitalización y enseñanza de las lenguas indígenas de Nicaragua. Desarrollada con Flutter, la aplicación busca preservar la riqueza cultural y lingüística del país a través de un aprendizaje interactivo, modular y accesible.
 
----
 
 ## Requisitos Previos y Entorno
 
@@ -72,8 +71,6 @@ assets:
 - .env
 - assets/images/
 - assets/icons/
-
----
 
 ## Comandos para Obtener las Dependencias
 
