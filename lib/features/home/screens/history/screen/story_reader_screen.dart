@@ -4,11 +4,13 @@ import 'package:nicalingo/core/theme/app_colors.dart';
 class StoryReaderScreen extends StatefulWidget {
   final Map<String, dynamic> story;
   final int storyNumber;
+  final String targetLanguageName;
 
   const StoryReaderScreen({
     super.key,
     required this.story,
     this.storyNumber = 1,
+    this.targetLanguageName = "Mískito",
   });
 
   @override
@@ -122,8 +124,8 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                           children: [
                             Text(
                               _isTranslated
-                                  ? "Viendo traducción al Mískito"
-                                  : "A continuación veremos su traducción al Mískito",
+                                  ? "Viendo traducción al ${widget.targetLanguageName}"
+                                  : "A continuación veremos su traducción al ${widget.targetLanguageName}",
                               style: const TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 13,

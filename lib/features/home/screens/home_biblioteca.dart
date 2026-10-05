@@ -7,7 +7,9 @@ import 'package:nicalingo/features/home/screens/home_settings.dart';
 import 'package:nicalingo/features/home/screens/history/screen/loading_story_screen.dart';
 
 class HomeBibliotecaScreen extends StatefulWidget {
-  const HomeBibliotecaScreen({super.key});
+  final String? currentLanguageCode; // Opcional: si deseas pasar el idioma activo
+
+  const HomeBibliotecaScreen({super.key, this.currentLanguageCode});
 
   @override
   State<HomeBibliotecaScreen> createState() => _HomeBibliotecaScreenState();
@@ -38,10 +40,39 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     try {
       final response = await Supabase.instance.client
           .from('library_stories')
-          .select()
+          .select('''
+            id,
+            image_asset,
+            tag,
+            category,
+            library_story_translations (
+              title,
+              description,
+              language_id
+            )
+          ''')
           .order('id', ascending: true);
 
-      final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(response);
+      final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(
+        (response as List).map((story) {
+          final translations = story['library_story_translations'] as List<dynamic>? ?? [];
+          
+          final translation = translations.isNotEmpty
+              ? translations.first as Map<String, dynamic>
+              : <String, dynamic>{};
+
+          return {
+            'id': story['id'],
+            'image_asset': story['image_asset'],
+            'tag': story['tag'],
+            'category': story['category'],
+            'title': translation['title'] ?? 'Sin título',
+            'description': translation['description'] ?? '',
+            'translations': translations,
+          };
+        }),
+      );
+
       setState(() {
         _allStories = stories;
         _filteredStories = stories;
@@ -62,11 +93,14 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   }
 
   void _filterStories() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchController.text.toLowerCase().trim();
     setState(() {
       _filteredStories = _allStories.where((story) {
-        final title = story['title']?.toLowerCase() ?? '';
-        return title.contains(query);
+        final title = (story['title'] ?? '').toString().toLowerCase();
+        final tag = (story['tag'] ?? '').toString().toLowerCase();
+        final category = (story['category'] ?? '').toString().toLowerCase();
+
+        return title.contains(query) || tag.contains(query) || category.contains(query);
       }).toList();
     });
   }
@@ -206,7 +240,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                     child: TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
-                        hintText: "Buscar historia...",
+                        hintText: "Buscar por título, categoría o etiqueta...",
                         hintStyle: TextStyle(fontFamily: 'Inter', color: Colors.grey[400], fontSize: 14),
                         prefixIcon: const Icon(Icons.search, color: Colors.grey),
                         border: InputBorder.none,
@@ -473,7 +507,6 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
           ),
         ],
       ),
-      // Barra inferior con efecto Liquid Glass y botón activo con efecto 3D / relieve
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
@@ -524,19 +557,14 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
         decoration: BoxDecoration(
           color: isSelected ? AppColors.textWhite : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          // Efecto 3D / relieve para el botón seleccionado
-          border: isSelected
-              ? Border.all(color: Colors.white, width: 1.5)
-              : null,
+          border: isSelected ? Border.all(color: Colors.white, width: 1.5) : null,
           boxShadow: isSelected
               ? [
-                  // Sombra inferior profunda simulando que está flotando (efecto 3D)
                   BoxShadow(
                     color: Colors.black.withAlpha(40),
                     blurRadius: 6,
                     offset: const Offset(0, 4),
                   ),
-                  // Brillo superior sutil simulando luz directa sobre el relieve
                   BoxShadow(
                     color: Colors.white.withAlpha(200),
                     blurRadius: 2,
