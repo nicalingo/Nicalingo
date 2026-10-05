@@ -6,11 +6,13 @@ import 'package:nicalingo/features/home/screens/history/screen/story_reader_scre
 class LoadingStoryScreen extends StatefulWidget {
   final Map<String, dynamic> story;
   final int storyNumber;
+  final String targetLanguageName;
 
   const LoadingStoryScreen({
     super.key,
     required this.story,
     this.storyNumber = 1,
+    this.targetLanguageName = "Mískito",
   });
 
   @override
@@ -52,10 +54,16 @@ class _LoadingStoryScreenState extends State<LoadingStoryScreen>
           builder: (context) => StoryReaderScreen(
             story: widget.story,
             storyNumber: widget.storyNumber,
+            targetLanguageName: widget.targetLanguageName,
           ),
         ),
       );
     });
+  }
+
+  @override
+  void disposevelocity() {
+    _animController.dispose();
   }
 
   @override
