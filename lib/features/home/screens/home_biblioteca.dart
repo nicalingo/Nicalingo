@@ -7,7 +7,7 @@ import 'package:nicalingo/features/home/screens/home_settings.dart';
 import 'package:nicalingo/features/home/screens/history/screen/loading_story_screen.dart';
 
 class HomeBibliotecaScreen extends StatefulWidget {
-  final String? currentLanguageCode; // Opcional: si deseas pasar el idioma activo
+  final String? currentLanguageCode; // Opcional: idioma activo
 
   const HomeBibliotecaScreen({super.key, this.currentLanguageCode});
 
@@ -17,7 +17,7 @@ class HomeBibliotecaScreen extends StatefulWidget {
 
 class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   final int _currentIndex = 2;
-  
+
   late Future<List<Map<String, dynamic>>> _storiesFuture;
   List<Map<String, dynamic>> _allStories = [];
   List<Map<String, dynamic>> _filteredStories = [];
@@ -42,36 +42,21 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
           .from('library_stories')
           .select('''
             id,
+            title,
+            title_translation,
+            description,
+            description_translation,
+            content,
+            content_translation,
             image_asset,
+            content_image_asset,
             tag,
-            category,
-            library_story_translations (
-              title,
-              description,
-              language_id
-            )
+            author
           ''')
           .order('id', ascending: true);
 
-      final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(
-        (response as List).map((story) {
-          final translations = story['library_story_translations'] as List<dynamic>? ?? [];
-          
-          final translation = translations.isNotEmpty
-              ? translations.first as Map<String, dynamic>
-              : <String, dynamic>{};
-
-          return {
-            'id': story['id'],
-            'image_asset': story['image_asset'],
-            'tag': story['tag'],
-            'category': story['category'],
-            'title': translation['title'] ?? 'Sin título',
-            'description': translation['description'] ?? '',
-            'translations': translations,
-          };
-        }),
-      );
+      final List<Map<String, dynamic>> stories =
+          List<Map<String, dynamic>>.from(response as List);
 
       setState(() {
         _allStories = stories;
@@ -95,13 +80,23 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   void _filterStories() {
     final query = _searchController.text.toLowerCase().trim();
     setState(() {
-      _filteredStories = _allStories.where((story) {
-        final title = (story['title'] ?? '').toString().toLowerCase();
-        final tag = (story['tag'] ?? '').toString().toLowerCase();
-        final category = (story['category'] ?? '').toString().toLowerCase();
+      if (query.isEmpty) {
+        _filteredStories = _allStories;
+      } else {
+        _filteredStories = _allStories.where((story) {
+          final title = (story['title'] ?? '').toString().toLowerCase();
+          final titleTrans = (story['title_translation'] ?? '').toString().toLowerCase();
+          final desc = (story['description'] ?? '').toString().toLowerCase();
+          final tag = (story['tag'] ?? '').toString().toLowerCase();
+          final author = (story['author'] ?? '').toString().toLowerCase();
 
-        return title.contains(query) || tag.contains(query) || category.contains(query);
-      }).toList();
+          return title.contains(query) ||
+              titleTrans.contains(query) ||
+              desc.contains(query) ||
+              tag.contains(query) ||
+              author.contains(query);
+        }).toList();
+      }
     });
   }
 
@@ -183,6 +178,8 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final languageName = widget.currentLanguageCode ?? "Mískito";
+
     return Scaffold(
       extendBody: true,
       body: Stack(
@@ -241,10 +238,17 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                       controller: _searchController,
                       decoration: InputDecoration(
                         hintText: "Buscar por título, categoría o etiqueta...",
-                        hintStyle: TextStyle(fontFamily: 'Inter', color: Colors.grey[400], fontSize: 14),
+                        hintStyle: TextStyle(
+                          fontFamily: 'Inter',
+                          color: Colors.grey[400],
+                          fontSize: 14,
+                        ),
                         prefixIcon: const Icon(Icons.search, color: Colors.grey),
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -254,8 +258,11 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                   child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _storiesFuture,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting && _allStories.isEmpty) {
-                        return const Center(child: CircularProgressIndicator(color: AppColors.primaryYellow));
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          _allStories.isEmpty) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: AppColors.primaryYellow),
+                        );
                       }
 
                       final stories = _filteredStories;
@@ -325,7 +332,10 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                       decoration: BoxDecoration(
                                         color: AppColors.secondarySkyBlue.withAlpha(200),
                                         borderRadius: BorderRadius.circular(22),
-                                        border: Border.all(color: AppColors.textWhite.withAlpha(80), width: 1.8),
+                                        border: Border.all(
+                                          color: AppColors.textWhite.withAlpha(80),
+                                          width: 1.8,
+                                        ),
                                         boxShadow: [
                                           BoxShadow(
                                             color: Colors.black.withAlpha(30),
@@ -345,7 +355,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                 mainAxisAlignment: MainAxisAlignment.center,
                                                 children: [
                                                   Text(
-                                                    stories[0]['title'] ?? '',
+                                                    stories[0]['title'] ?? 'Historia',
                                                     style: const TextStyle(
                                                       fontFamily: 'Inter',
                                                       color: AppColors.textWhite,
@@ -364,12 +374,16 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                           builder: (context) => LoadingStoryScreen(
                                                             story: stories[0],
                                                             storyNumber: 1,
+                                                            targetLanguageName: languageName,
                                                           ),
                                                         ),
                                                       );
                                                     },
                                                     child: Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 4,
+                                                      ),
                                                       decoration: BoxDecoration(
                                                         color: AppColors.primaryYellow,
                                                         borderRadius: BorderRadius.circular(12),
@@ -398,7 +412,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                   width: 75,
                                                   height: 75,
                                                   child: _buildStoryImage(
-                                                    imageUrl: stories[0]['image_asset'],
+                                                    imageUrl: stories[0]['image_asset'] ?? stories[0]['content_image_asset'],
                                                     size: 75,
                                                     iconColor: AppColors.textWhite,
                                                     iconFallback: Icons.menu_book,
@@ -434,7 +448,10 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                           decoration: BoxDecoration(
                                             color: AppColors.primaryBlue.withAlpha(160),
                                             borderRadius: BorderRadius.circular(22),
-                                            border: Border.all(color: AppColors.textWhite.withAlpha(50), width: 1.5),
+                                            border: Border.all(
+                                              color: AppColors.textWhite.withAlpha(50),
+                                              width: 1.5,
+                                            ),
                                             boxShadow: [
                                               BoxShadow(
                                                 color: Colors.black.withAlpha(20),
@@ -444,14 +461,17 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                             ],
                                           ),
                                           child: ListTile(
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 8,
+                                            ),
                                             leading: ClipRRect(
                                               borderRadius: BorderRadius.circular(12),
                                               child: SizedBox(
                                                 width: 45,
                                                 height: 45,
                                                 child: _buildStoryImage(
-                                                  imageUrl: story['image_asset'],
+                                                  imageUrl: story['image_asset'] ?? story['content_image_asset'],
                                                   size: 45,
                                                   iconColor: AppColors.textWhite,
                                                   iconFallback: Icons.auto_stories,
@@ -478,7 +498,11 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textWhite),
+                                            trailing: const Icon(
+                                              Icons.arrow_forward_ios_rounded,
+                                              size: 16,
+                                              color: AppColors.textWhite,
+                                            ),
                                             onTap: () {
                                               Navigator.push(
                                                 context,
@@ -486,6 +510,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                   builder: (context) => LoadingStoryScreen(
                                                     story: story,
                                                     storyNumber: index + 1,
+                                                    targetLanguageName: languageName,
                                                   ),
                                                 ),
                                               );
@@ -521,7 +546,10 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primaryYellow.withAlpha(240),
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: AppColors.textWhite.withAlpha(220), width: 2.8),
+                    border: Border.all(
+                      color: AppColors.textWhite.withAlpha(220),
+                      width: 2.8,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withAlpha(60),
@@ -549,7 +577,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   }
 
   Widget _buildNavBarItem(String assetPath, int index) {
-    bool isSelected = _currentIndex == index;
+    final bool isSelected = _currentIndex == index;
     return GestureDetector(
       onTap: () => _onNavBarTap(index),
       child: Container(

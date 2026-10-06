@@ -22,13 +22,22 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.story['title'] ?? 'Historia';
+    // Títulos dinámicos según el modo de traducción
+    final originalTitle = widget.story['title'] ?? 'Historia';
+    final translatedTitle = widget.story['title_translation'] ?? originalTitle;
+    final currentTitle = _isTranslated ? translatedTitle : originalTitle;
+
+    // Contenidos originales y traducidos basados en las columnas de library_stories
     final originalContent = widget.story['content'] ??
         widget.story['description'] ??
         'Contenido no disponible.';
+
     final translatedContent = widget.story['content_translation'] ??
+        widget.story['description_translation'] ??
         'Traducción en preparación...';
-    final imageUrl = widget.story['image_asset']?.toString();
+
+    // Se prioriza la imagen ilustrativa interna si existe, o la portada
+    final imageUrl = (widget.story['content_image_asset'] ?? widget.story['image_asset'])?.toString();
 
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A6B),
@@ -39,15 +48,24 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
               children: [
                 _buildHeader(context),
                 const SizedBox(height: 10),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontFamily: 'Noot',
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.1,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: Text(
+                      currentTitle,
+                      key: ValueKey<bool>(_isTranslated),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'Noot',
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.1,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -90,17 +108,20 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                                 physics: const BouncingScrollPhysics(),
                                 child: AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 300),
-                                  child: Text(
-                                    _isTranslated ? translatedContent : originalContent,
-                                    key: ValueKey<bool>(_isTranslated),
-                                    style: const TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontSize: 13.5,
-                                      height: 1.45,
-                                      color: Colors.black87,
-                                      fontWeight: FontWeight.w600,
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Text(
+                                      _isTranslated ? translatedContent : originalContent,
+                                      key: ValueKey<bool>(_isTranslated),
+                                      style: const TextStyle(
+                                        fontFamily: 'Inter',
+                                        fontSize: 13.5,
+                                        height: 1.45,
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      textAlign: TextAlign.justify,
                                     ),
-                                    textAlign: TextAlign.justify,
                                   ),
                                 ),
                               ),
