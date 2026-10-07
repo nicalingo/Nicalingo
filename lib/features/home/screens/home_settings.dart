@@ -362,6 +362,11 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
         );
       },
     );
+
+    // Limpieza de controladores para evitar fugas de memoria
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
   }
 
   Future<void> _logout() async {
@@ -777,7 +782,7 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   }
 
   Widget _buildNavBarItem(String assetPath, int index) {
-    bool isSelected = _currentIndex == index;
+    final bool isSelected = _currentIndex == index;
     return GestureDetector(
       onTap: () => _onNavBarTap(index),
       child: Container(

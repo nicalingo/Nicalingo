@@ -23,6 +23,7 @@ class _LoadingStoryScreenState extends State<LoadingStoryScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
+  Timer? _navigationTimer;
 
   final List<String> _loadingTips = [
     "Descubriendo leyendas ancestrales...",
@@ -46,7 +47,7 @@ class _LoadingStoryScreenState extends State<LoadingStoryScreen>
       CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
     );
 
-    Timer(const Duration(milliseconds: 2200), () {
+    _navigationTimer = Timer(const Duration(milliseconds: 2200), () {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -62,12 +63,8 @@ class _LoadingStoryScreenState extends State<LoadingStoryScreen>
   }
 
   @override
-  void disposevelocity() {
-    _animController.dispose();
-  }
-
-  @override
   void dispose() {
+    _navigationTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
