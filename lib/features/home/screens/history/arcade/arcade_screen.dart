@@ -69,9 +69,10 @@ class ArcadeScreen extends StatelessWidget {
                   _buildGameCard(
                     title: "Come con Coco",
                     tag: "Refuerzo",
-                    icon: Icons.lunch_dining_rounded,
+                    imageAsset: "assets/images/arcade/icononos/come_coco.jpeg",
                     cardColor: const Color(0xFFFFD180),
                     isEnabled: true,
+                    actionText: "Jugar",
                     onTap: () {
                       // Conexión futura a Come con Coco
                     },
@@ -82,6 +83,7 @@ class ArcadeScreen extends StatelessWidget {
                     icon: Icons.style_rounded,
                     cardColor: const Color(0xFF80D8FF),
                     isEnabled: true,
+                    actionText: "Jugar",
                     onTap: () {
                       // Conexión futura a Memoria Ancestral
                     },
@@ -92,8 +94,31 @@ class ArcadeScreen extends StatelessWidget {
                     icon: Icons.psychology_alt_rounded,
                     cardColor: const Color(0xFFA7FFEB),
                     isEnabled: true,
+                    actionText: "Jugar",
                     onTap: () {
-                      // Conexión futura a Trivias / Salas
+                      // Conexión futura a Trivia
+                    },
+                  ),
+                  _buildGameCard(
+                    title: "Repite con Coco",
+                    tag: "Voz / Habla",
+                    icon: Icons.record_voice_over_rounded,
+                    cardColor: const Color(0xFFD1C4E9),
+                    isEnabled: false,
+                    actionText: "Jugar",
+                    onTap: () {
+                      // Conexión futura a Repite con Coco
+                    },
+                  ),
+                  _buildGameCard(
+                    title: "Diccionario Coco",
+                    tag: "Consulta",
+                    icon: Icons.auto_stories_rounded,
+                    cardColor: const Color(0xFFFFE082),
+                    isEnabled: true,
+                    actionText: "Abrir",
+                    onTap: () {
+                      // Conexión al asistente / Diccionario Coco
                     },
                   ),
                   _buildGameCard(
@@ -102,6 +127,7 @@ class ArcadeScreen extends StatelessWidget {
                     icon: Icons.music_note_rounded,
                     cardColor: const Color(0xFFFF80AB),
                     isEnabled: false,
+                    actionText: "Jugar",
                     onTap: () {},
                   ),
                 ],
@@ -116,9 +142,11 @@ class ArcadeScreen extends StatelessWidget {
   Widget _buildGameCard({
     required String title,
     required String tag,
-    required IconData icon,
+    String? imageAsset,
+    IconData? icon,
     required Color cardColor,
     required bool isEnabled,
+    required String actionText,
     required VoidCallback onTap,
   }) {
     return Container(
@@ -157,17 +185,42 @@ class ArcadeScreen extends StatelessWidget {
               ),
             ),
           ),
-          Icon(icon, size: 58, color: Colors.black87.withAlpha(180)),
+          // Muestra la imagen si existe, o el ícono como fallback
+          Expanded(
+            child: Center(
+              child: imageAsset != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        imageAsset,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          icon ?? Icons.sports_esports_rounded,
+                          size: 54,
+                          color: Colors.black87.withAlpha(180),
+                        ),
+                      ),
+                    )
+                  : Icon(
+                      icon ?? Icons.sports_esports_rounded,
+                      size: 54,
+                      color: Colors.black87.withAlpha(180),
+                    ),
+            ),
+          ),
           Text(
             title,
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontFamily: 'Inter',
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w800,
               color: Colors.black87,
             ),
           ),
+          const SizedBox(height: 4),
           SizedBox(
             width: double.infinity,
             height: 38,
@@ -182,11 +235,11 @@ class ArcadeScreen extends StatelessWidget {
                 ),
               ),
               child: Text(
-                isEnabled ? 'Jugar' : 'Pronto',
+                isEnabled ? actionText : 'Pronto',
                 style: const TextStyle(
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
             ),
