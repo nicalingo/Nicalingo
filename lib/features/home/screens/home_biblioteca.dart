@@ -40,19 +40,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     try {
       final response = await Supabase.instance.client
           .from('library_stories')
-          .select('''
-            id,
-            title,
-            title_translation,
-            description,
-            description_translation,
-            content,
-            content_translation,
-            image_asset,
-            content_image_asset,
-            tag,
-            author
-          ''')
+          .select('*')
           .order('id', ascending: true);
 
       final List<Map<String, dynamic>> stories =
@@ -480,7 +468,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                   iconSize: 24,
                                                 ),
                                               ),
-                                            ),
+                                              ),
                                             title: Text(
                                               story['title'] ?? '',
                                               style: const TextStyle(
