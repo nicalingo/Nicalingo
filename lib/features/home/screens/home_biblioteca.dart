@@ -5,6 +5,7 @@ import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_settings.dart';
 import 'package:nicalingo/features/home/screens/history/screen/loading_story_screen.dart';
+import 'package:nicalingo/features/home/screens/history/arcade/arcade_screen.dart';
 
 class HomeBibliotecaScreen extends StatefulWidget {
   final String? currentLanguageCode; // Opcional: idioma activo
@@ -236,27 +237,39 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryYellow,
-                    borderRadius: BorderRadius.circular(25),
-                    border: Border.all(color: AppColors.textWhite, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(50),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ArcadeScreen(
+                          currentLanguageCode: widget.currentLanguageCode,
+                        ),
                       ),
-                    ],
-                  ),
-                  child: const Text(
-                    "Biblioteca",
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryYellow,
+                      borderRadius: BorderRadius.circular(25),
+                      border: Border.all(color: AppColors.textWhite, width: 4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(50),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Text(
+                      "Biblioteca",
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark,
+                      ),
                     ),
                   ),
                 ),
