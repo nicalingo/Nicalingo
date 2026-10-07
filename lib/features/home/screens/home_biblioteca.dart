@@ -58,10 +58,12 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
       final List<Map<String, dynamic>> stories =
           List<Map<String, dynamic>>.from(response as List);
 
-      setState(() {
-        _allStories = stories;
-        _filteredStories = stories;
-      });
+      if (mounted) {
+        setState(() {
+          _allStories = stories;
+          _filteredStories = stories;
+        });
+      }
       return stories;
     } catch (e) {
       debugPrint('Error cargando historias: $e');
@@ -237,7 +239,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                     child: TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
-                        hintText: "Buscar por título, categoría o etiqueta...",
+                        hintText: "Buscar por título o etiqueta...",
                         hintStyle: TextStyle(
                           fontFamily: 'Inter',
                           color: Colors.grey[400],
