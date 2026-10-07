@@ -40,11 +40,62 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     try {
       final response = await Supabase.instance.client
           .from('library_stories')
-          .select('*')
+          .select('''
+            id,
+            title,
+            description,
+            content,
+            image_asset,
+            content_image_asset,
+            tag,
+            author,
+            library_story_translations (
+              title,
+              description,
+              content,
+              language_id,
+              languages (
+                id,
+                name,
+                code
+              )
+            )
+          ''')
           .order('id', ascending: true);
 
-      final List<Map<String, dynamic>> stories =
-          List<Map<String, dynamic>>.from(response as List);
+      final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(
+        (response as List).map((story) {
+          final translations = story['library_story_translations'] as List<dynamic>? ?? [];
+
+          // Busca la traducción del idioma activo (o Mískito por defecto)
+          final activeLang = (widget.currentLanguageCode ?? "Mískito").toLowerCase();
+          final translation = translations.firstWhere(
+            (t) {
+              final langData = t['languages'] as Map<String, dynamic>?;
+              final langName = (langData?['name'] ?? '').toString().toLowerCase();
+              final langCode = (langData?['code'] ?? '').toString().toLowerCase();
+              return langName.contains(activeLang) || langCode == activeLang;
+            },
+            orElse: () => translations.isNotEmpty ? translations.first : <String, dynamic>{},
+          ) as Map<String, dynamic>;
+
+          return {
+            'id': story['id'],
+            'image_asset': story['image_asset'],
+            'content_image_asset': story['content_image_asset'],
+            'tag': story['tag'],
+            'author': story['author'],
+            'title': story['title'] ?? 'Sin título',
+            'description': story['description'] ?? '',
+            'content': story['content'] ?? story['description'] ?? '',
+            // Mapeo directo para el lector StoryReaderScreen
+            'title_translation': translation['title'] ?? story['title'],
+            'description_translation': translation['description'] ?? story['description'],
+            'content_translation': translation['content'] ?? translation['description'],
+            'translations': translations,
+          };
+        }),
+      );
 
       if (mounted) {
         setState(() {
@@ -468,7 +519,7 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
                                                   iconSize: 24,
                                                 ),
                                               ),
-                                              ),
+                                            ),
                                             title: Text(
                                               story['title'] ?? '',
                                               style: const TextStyle(
