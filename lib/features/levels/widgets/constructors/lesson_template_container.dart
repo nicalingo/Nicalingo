@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:nicalingo/core/services/audio_recorder_service.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/services/phonetic_matcher_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -51,6 +55,8 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   bool isPlayingNativeAudio = false;
   Uint8List? recordedUserBytes;
 
+  static const String _userLivesCacheKey = 'cached_user_lives_count';
+
   Map<String, dynamic> get currentQ => widget.questions.isNotEmpty
       ? widget.questions[currentQuestionIndex]
       : {};
@@ -80,7 +86,25 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     }
   }
 
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
+
   Future<void> _fetchUserLives() async {
+    final cache = await CacheService.instance;
+    final cachedLives = cache.getData(_userLivesCacheKey);
+    if (cachedLives != null && cachedLives is int) {
+      if (mounted) {
+        setState(() {
+          currentLives = cachedLives;
+        });
+      }
+    }
+
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) return;
+
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
@@ -92,8 +116,10 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
           .maybeSingle();
 
       if (data != null && data['lives'] != null && mounted) {
+        final syncedLives = (data['lives'] as num).toInt();
+        await cache.saveData(_userLivesCacheKey, syncedLives);
         setState(() {
-          currentLives = (data['lives'] as num).toInt();
+          currentLives = syncedLives;
         });
       }
     } catch (e) {
@@ -165,74 +191,90 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
   }
 
   Future<void> _deductLifeOnMistake() async {
-    // FIX 3: Actualización optimista de UI para respuesta rápida visual
+    final cache = await CacheService.instance;
+    int nextLives = currentLives;
+    if (nextLives > 0) {
+      nextLives--;
+    }
+
     if (mounted) {
       setState(() {
-        if (currentLives > 0) {
-          currentLives--;
-        }
+        currentLives = nextLives;
       });
     }
 
-    try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
+    await cache.saveData(_userLivesCacheKey, nextLives);
 
-      final remaining = await Supabase.instance.client.rpc(
-        'deduct_life',
-        params: {'user_uuid': user.id},
-      );
+    final hasInternet = await _hasInternetConnection();
+    final user = Supabase.instance.client.auth.currentUser;
 
-      final int dbRemainingLives = (remaining as int?) ?? currentLives;
-
-      // Sincronizar por si la base de datos devuelve algo distinto al cálculo local
-      if (mounted && currentLives != dbRemainingLives) {
-        setState(() {
-          currentLives = dbRemainingLives;
+    if (user != null) {
+      if (!hasInternet) {
+        // Encolar resta de vida para sincronizar con la red
+        await cache.enqueuePendingAction({
+          'type': 'rpc',
+          'rpc_name': 'deduct_life',
+          'params': {'user_uuid': user.id},
         });
-      }
+      } else {
+        try {
+          final remaining = await Supabase.instance.client.rpc(
+            'deduct_life',
+            params: {'user_uuid': user.id},
+          );
 
-      if (currentLives <= 0 && mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogCtx) => AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
-              children: [
-                Icon(Icons.heart_broken, color: Colors.redAccent, size: 28),
-                SizedBox(width: 8),
-                Text('¡Te quedaste sin vidas!',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              ],
-            ),
-            content: const Text(
-              'Has agotado todas tus vidas en esta lección. Espera a que se regeneren o vuelve más tarde.',
-              style: TextStyle(fontSize: 14),
-            ),
-            actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryYellow,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  Navigator.pop(dialogCtx);
-                  Navigator.pop(context, false);
-                },
-                child: const Text('Volver al mapa',
-                    style: TextStyle(
-                        color: Colors.black87, fontWeight: FontWeight.bold)),
-              ),
+          final int dbRemainingLives = (remaining as int?) ?? currentLives;
+          await cache.saveData(_userLivesCacheKey, dbRemainingLives);
+
+          if (mounted && currentLives != dbRemainingLives) {
+            setState(() {
+              currentLives = dbRemainingLives;
+            });
+          }
+        } catch (e) {
+          debugPrint('Error descontando vida remotamente: $e');
+        }
+      }
+    }
+
+    if (currentLives <= 0 && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.heart_broken, color: Colors.redAccent, size: 28),
+              SizedBox(width: 8),
+              Text('¡Te quedaste sin vidas!',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             ],
           ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error descontando vida: $e');
+          content: const Text(
+            'Has agotado todas tus vidas en esta lección. Espera a que se regeneren o vuelve más tarde.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryYellow,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                Navigator.pop(context, false);
+              },
+              child: const Text('Volver al mapa',
+                  style: TextStyle(
+                      color: Colors.black87, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -296,7 +338,37 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     try {
       setState(() => isPlayingNativeAudio = true);
       await _audioPlayer.stop();
-      await _audioPlayer.play(UrlSource(url));
+
+      final cache = await CacheService.instance;
+      final cacheKey = 'audio_cache_${url.hashCode}';
+
+      // 1. Revisar si tenemos los bytes del audio en caché local
+      final cachedAudio = cache.getData(cacheKey);
+      if (cachedAudio != null && cachedAudio is String) {
+        final bytes = base64Decode(cachedAudio);
+        await _audioPlayer.play(BytesSource(bytes));
+      } else {
+        // 2. Si hay conexión, reproducir y guardar en caché para la próxima vez
+        final hasInternet = await _hasInternetConnection();
+        if (hasInternet) {
+          await _audioPlayer.play(UrlSource(url));
+          http.get(Uri.parse(url)).then((resp) {
+            if (resp.statusCode == 200) {
+              cache.saveData(cacheKey, base64Encode(resp.bodyBytes));
+            }
+          }).catchError((_) {});
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Audio no disponible sin conexión."),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+
       _audioPlayer.onPlayerComplete.listen((_) {
         if (mounted) setState(() => isPlayingNativeAudio = false);
       });
@@ -363,7 +435,21 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
       return;
     }
 
-    final nativeBytes = await _audioRecorder.fetchAudioBytes(nativeAudioUrl);
+    // Comprobar si el audio nativo está en caché local para evaluación offline
+    final cache = await CacheService.instance;
+    final cacheKey = 'audio_cache_${nativeAudioUrl.hashCode}';
+    Uint8List? nativeBytes;
+
+    final cachedAudio = cache.getData(cacheKey);
+    if (cachedAudio != null && cachedAudio is String) {
+      nativeBytes = base64Decode(cachedAudio);
+    } else {
+      nativeBytes = await _audioRecorder.fetchAudioBytes(nativeAudioUrl);
+      if (nativeBytes != null) {
+        await cache.saveData(cacheKey, base64Encode(nativeBytes));
+      }
+    }
+
     if (!mounted) return;
 
     if (nativeBytes != null) {
@@ -389,7 +475,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
       setState(() => isEvaluatingAudio = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("No se pudo descargar el audio nativo de referencia."),
+          content: Text("No se pudo obtener el audio nativo de referencia."),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -545,7 +631,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // --- VISTA 1: PRONUNCIACIÓN (FIGMA LECCIÓN 1) ---
+  // --- VISTA 1: PRONUNCIACIÓN ---
   Widget _buildPronunciationView() {
     final String targetWord = (currentQ['expected_word'] ??
             currentQ['word'] ??
@@ -767,7 +853,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // --- VISTA 2: COMPLETA LA FRASE (FIGMA LECCIÓN 2) ---
+  // --- VISTA 2: COMPLETA LA FRASE ---
   Widget _buildFillBlankView() {
     final String prompt = (currentQ['prompt_text'] ?? currentQ['question_text'] ?? 'Buenas').toString();
     final String fullTargetPhrase = (currentQ['full_phrase'] ?? currentQ['correct_phrase'] ?? '$prompt noches').toString();
@@ -985,7 +1071,6 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
     );
   }
 
-  // Se declara dynamic icon para compatibilidad total con FalconData / IconData de FontAwesome
   Widget _buildActionButton({
     required String badgeNumber,
     required dynamic icon,

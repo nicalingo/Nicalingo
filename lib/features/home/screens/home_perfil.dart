@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
 import 'package:nicalingo/features/home/screens/home_settings.dart';
@@ -28,6 +30,10 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
   List<Map<String, dynamic>> _confirmedFriends = [];
   List<Map<String, dynamic>> _pendingRequests = [];
 
+  static const String _profileCacheKey = 'cached_user_profile';
+  static const String _friendsCacheKey = 'cached_user_friends';
+  static const String _requestsCacheKey = 'cached_user_friend_requests';
+
   @override
   void initState() {
     super.initState();
@@ -35,7 +41,35 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
     _loadFriendships();
   }
 
+  // Verifica si el dispositivo cuenta con conexión a internet activa
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
+
   Future<void> _loadUserProfile() async {
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
+
+    // 1. Carga inmediata desde el caché local si existe
+    final cachedProfile = cache.getData(_profileCacheKey);
+    if (cachedProfile != null && cachedProfile is Map) {
+      if (mounted) {
+        setState(() {
+          _userData = Map<String, dynamic>.from(cachedProfile['data'] ?? {});
+          _userLevel = cachedProfile['level'] ?? 1;
+          _completedAchievementsCount = cachedProfile['achievements'] ?? 0;
+          _isLoading = false;
+        });
+      }
+    }
+
+    if (!hasInternet) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    // 2. Si hay conexión, consulta y refresca con Supabase
     try {
       final user = supabase.auth.currentUser;
       if (user != null) {
@@ -79,6 +113,13 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
           achievements = (achievementsResponse as List).length;
         } catch (_) {}
 
+        // Guardar copia local en caché
+        await cache.saveData(_profileCacheKey, {
+          'data': profileData,
+          'level': calculatedLevel,
+          'achievements': achievements,
+        });
+
         if (mounted) {
           setState(() {
             _userData = profileData;
@@ -89,16 +130,37 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
         }
       }
     } catch (e) {
+      debugPrint('Error al cargar perfil desde red: $e');
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cargar perfil: $e')),
-        );
       }
     }
   }
 
   Future<void> _loadFriendships() async {
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
+
+    // Carga de caché local
+    final cachedFriends = cache.getData(_friendsCacheKey);
+    final cachedRequests = cache.getData(_requestsCacheKey);
+
+    if (cachedFriends != null && cachedFriends is List) {
+      _confirmedFriends = List<Map<String, dynamic>>.from(
+        cachedFriends.map((e) => Map<String, dynamic>.from(e)),
+      );
+    }
+    if (cachedRequests != null && cachedRequests is List) {
+      _pendingRequests = List<Map<String, dynamic>>.from(
+        cachedRequests.map((e) => Map<String, dynamic>.from(e)),
+      );
+    }
+
+    if (!hasInternet) {
+      if (mounted) setState(() => _loadingFriends = false);
+      return;
+    }
+
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
@@ -151,6 +213,9 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
         }
       }
 
+      await cache.saveData(_friendsCacheKey, friendsList);
+      await cache.saveData(_requestsCacheKey, requestsList);
+
       if (mounted) {
         setState(() {
           _confirmedFriends = friendsList;
@@ -166,7 +231,23 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
     }
   }
 
-  void _showAddFriendDialog() {
+  Future<void> _showAddFriendDialog() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tienes conexión a internet para buscar o añadir amigos.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final TextEditingController searchController = TextEditingController();
     bool isSearching = false;
     String? errorMessage;
@@ -218,7 +299,13 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                           final query = searchController.text.trim();
                           if (query.isEmpty) return;
 
-                          final messenger = ScaffoldMessenger.of(context);
+                          final isOnline = await _hasInternetConnection();
+                          if (!isOnline) {
+                            setDialogState(() {
+                              errorMessage = 'Se perdió la conexión a internet.';
+                            });
+                            return;
+                          }
 
                           setDialogState(() {
                             isSearching = true;
@@ -277,7 +364,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                               Navigator.pop(dialogContext);
                             }
 
-                            messenger.showSnackBar(
+                            scaffoldMessenger.showSnackBar(
                               SnackBar(
                                 content: Text('¡Solicitud enviada a ${targetUser['nickname']}!'),
                                 backgroundColor: Colors.green,
@@ -310,7 +397,22 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
   }
 
   Future<void> _respondToRequest(String friendshipId, bool accept) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tienes conexión a internet para responder solicitudes.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     try {
       if (accept) {
         await supabase
@@ -326,26 +428,41 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
 
       await _loadFriendships();
 
-      messenger.showSnackBar(
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(accept ? '¡Solicitud aceptada!' : 'Solicitud rechazada'),
           backgroundColor: accept ? Colors.green : Colors.black87,
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(
+      scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Error al responder: $e')),
       );
     }
   }
 
-  void _editNickname() {
+  Future<void> _editNickname() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para cambiar tu apodo.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
     final TextEditingController controller =
         TextEditingController(text: _userData?['nickname'] ?? '');
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Editar apodo'),
         content: TextField(
           controller: controller,
@@ -353,7 +470,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
@@ -362,7 +479,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
             onPressed: () async {
               final newNickname = controller.text.trim();
               if (newNickname.isNotEmpty) {
-                Navigator.pop(context);
+                Navigator.pop(dialogCtx);
                 await _updateProfileField('nickname', newNickname);
               }
             },
@@ -375,6 +492,19 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
   }
 
   Future<void> _pickAndUploadImage() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para cambiar tu foto de perfil.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -390,7 +520,6 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
 
       setState(() => _isLoading = true);
 
-      // Leemos directamente los bytes del XFile en memoria (funciona en Web, Android y Windows)
       final Uint8List imageBytes = await image.readAsBytes();
       final fileExt = image.name.split('.').last.toLowerCase();
       final fileName =
@@ -401,7 +530,6 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
           ? 'image/png'
           : (fileExt == 'webp' ? 'image/webp' : 'image/jpeg');
 
-      // Usamos uploadBinary en lugar de upload(File) para compatibilidad multiplataforma
       await supabase.storage.from('profiles').uploadBinary(
             filePath,
             imageBytes,
@@ -437,6 +565,19 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
   }
 
   Future<void> _updateProfileField(String field, dynamic value) async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para actualizar tu perfil.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final user = supabase.auth.currentUser;
       if (user == null) return;
@@ -665,7 +806,7 @@ class _HomePerfilScreenState extends State<HomePerfilScreen> {
                     ),
                     const SizedBox(height: 20),
                     
-                    // Tarjeta: Apartado de Amistades (Pestañas Amigos / Solicitudes)
+                    // Tarjeta: Apartado de Amistades
                     _buildFriendsCard(),
                     const SizedBox(height: 100),
                   ],

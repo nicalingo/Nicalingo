@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/levels/widgets/constructors/lesson_template_container.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -79,8 +81,29 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
     _fetchPreviousProgress();
   }
 
-  // Traemos el récord anterior para no duplicar XP
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
+
+  String get _xpCacheKey =>
+      'cached_xp_${widget.languageId}_${widget.levelId}';
+
+  // Traemos el récord anterior para no duplicar XP (híbrido local/remoto)
   Future<void> _fetchPreviousProgress() async {
+    final cache = await CacheService.instance;
+    final cachedXp = cache.getData(_xpCacheKey);
+    if (cachedXp != null && cachedXp is int) {
+      if (mounted) {
+        setState(() {
+          _previousMaxXp = cachedXp;
+        });
+      }
+    }
+
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) return;
+
     try {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
@@ -95,9 +118,11 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
           .maybeSingle();
 
       if (response != null && response['earned_xp'] != null) {
+        final xp = (response['earned_xp'] as num).toInt();
+        await cache.saveData(_xpCacheKey, xp);
         if (mounted) {
           setState(() {
-            _previousMaxXp = (response['earned_xp'] as num).toInt();
+            _previousMaxXp = xp;
           });
         }
       }
@@ -155,18 +180,71 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
 
   Future<void> _saveFinalProgress() async {
     setState(() => isSaving = true);
-    try {
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
 
-      if (user == null) {
-        throw Exception("No hay usuario autenticado en la sesión actual.");
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      if (mounted) setState(() => isSaving = false);
+      return;
+    }
+
+    final int targetLevelId = widget.levelId;
+    final int targetLanguageId = widget.languageId;
+    final int bestXp = max(_previousMaxXp, accumulatedXp);
+
+    // 1. Guardar de inmediato en la caché local
+    await cache.saveData(_xpCacheKey, bestXp);
+
+    // Actualizar también la lista de niveles desbloqueados en caché para el mapa
+    final mapLevelsKey = 'cached_levels_lang_${widget.languageId}';
+    final cachedLevels = cache.getData(mapLevelsKey);
+    if (cachedLevels != null && cachedLevels is List) {
+      final updatedLevels = cachedLevels.map((lvl) {
+        final currentLvlId = int.tryParse(lvl['id']?.toString() ?? '0');
+        if (currentLvlId == targetLevelId) {
+          return {...Map<String, dynamic>.from(lvl), 'is_unlocked': true};
+        }
+        return lvl;
+      }).toList();
+      await cache.saveData(mapLevelsKey, updatedLevels);
+    }
+
+    final progressPayload = {
+      'user_id': user.id,
+      'language_id': targetLanguageId,
+      'level_id': targetLevelId,
+      'current_level_id': targetLevelId,
+      'earned_xp': bestXp,
+      'is_completed': true,
+      'last_activity': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    // 2. Si no hay conexión, encolar acción para sincronizar después
+    if (!hasInternet) {
+      await cache.enqueuePendingAction({
+        'table': 'user_progress',
+        'data': progressPayload,
+      });
+
+      if (mounted) {
+        setState(() => isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Progreso guardado en tu dispositivo. Se sincronizará al conectar.'),
+            backgroundColor: Color(0xFF1E3A8A),
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
+      return;
+    }
 
-      final int targetLevelId = widget.levelId;
-      final int targetLanguageId = widget.languageId;
-
-      //  CORREGIDO: Se añade order y limit(1) para evitar el error 406 de múltiples filas
+    // 3. Si hay conexión, enviar directamente a Supabase
+    try {
       final existingProgress = await supabase
           .from('user_progress')
           .select('current_level_id')
@@ -185,18 +263,10 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
         }
       }
 
+      progressPayload['current_level_id'] = highestLevelId;
+
       await supabase.from('user_progress').upsert(
-        {
-          'user_id': user.id,
-          'language_id': targetLanguageId,
-          'level_id': targetLevelId,
-          'current_level_id': highestLevelId,
-          'earned_xp': max(_previousMaxXp, accumulatedXp), // Guarda el mayor puntaje logrado
-          'is_completed': true,
-          'last_activity': DateTime.now().toUtc().toIso8601String(),
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        // Mantiene un registro individual por nivel
+        progressPayload,
         onConflict: 'user_id, language_id, level_id',
       ).select();
 
@@ -206,14 +276,12 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
         debugPrint("⚠️ Aviso actualizando racha: $streakError");
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error guardando progreso: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
+      debugPrint("⚠️ Error al conectar con Supabase. Guardando en cola local: $e");
+      // Respaldo: si la red falló durante la petición, encolar acción
+      await cache.enqueuePendingAction({
+        'table': 'user_progress',
+        'data': progressPayload,
+      });
     } finally {
       if (mounted) {
         setState(() => isSaving = false);
@@ -513,7 +581,6 @@ class _LessonAssemblerScreenState extends State<LessonAssemblerScreen> {
                       Expanded(
                         child: _metricBadge(
                           icon: FontAwesomeIcons.star,
-                          // Muestra únicamente el XP que realmente le falta sumar a su cuenta
                           label: "+$_newFinalXpToAward XP",
                           color: AppColors.primaryYellow,
                         ),
