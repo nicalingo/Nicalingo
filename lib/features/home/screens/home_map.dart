@@ -3,6 +3,8 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/levels/screens/loading_level_screen.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
@@ -49,6 +51,9 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   int _secondsUntilNextLife = 0;
   Timer? _countdownTimer;
 
+  static const String _userProfileCacheKey = 'cached_map_user_profile';
+  String get _mapLevelsCacheKey => 'cached_levels_lang_${widget.languageId}';
+
   late Future<List<Map<String, dynamic>>> _levelsFuture =
       _fetchLevelsAndProgress();
 
@@ -73,6 +78,11 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     super.dispose();
   }
 
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
+
   void _startCountdownTimer() {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -82,7 +92,6 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           _secondsUntilNextLife--;
         });
       } else if (_currentLives < 5) {
-        // Cuando llega a 0 y no está lleno, vuelve a sincronizar con Supabase automáticamente
         _fetchUserProfile();
       }
     });
@@ -100,6 +109,24 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   }
 
   Future<void> _fetchUserProfile() async {
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
+
+    // 1. Cargar perfil y vidas locales si existen
+    final cachedData = cache.getData(_userProfileCacheKey);
+    if (cachedData != null && cachedData is Map) {
+      if (mounted) {
+        setState(() {
+          _userProfile = Map<String, dynamic>.from(cachedData['profile'] ?? {});
+          _currentLives = (cachedData['lives'] as int?) ?? 5;
+          _secondsUntilNextLife = (cachedData['seconds_left'] as int?) ?? 0;
+        });
+      }
+    }
+
+    if (!hasInternet) return;
+
+    // 2. Si hay conexión, refrescar con Supabase
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
@@ -123,6 +150,12 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           .eq('id', user.id)
           .maybeSingle();
 
+      await cache.saveData(_userProfileCacheKey, {
+        'profile': profile,
+        'lives': syncedLives,
+        'seconds_left': secondsLeft,
+      });
+
       if (mounted) {
         setState(() {
           _userProfile = profile;
@@ -131,7 +164,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error cargando perfil o vidas: $e');
+      debugPrint('Error cargando perfil o vidas desde red: $e');
     }
   }
 
@@ -349,6 +382,19 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   }
 
   Future<void> _adminRestoreLives() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para restablecer vidas en el servidor.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
@@ -357,6 +403,13 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
         'admin_restore_user_lives',
         params: {'user_uuid': user.id},
       );
+
+      final cache = await CacheService.instance;
+      await cache.saveData(_userProfileCacheKey, {
+        'profile': _userProfile,
+        'lives': 5,
+        'seconds_left': 0,
+      });
 
       if (mounted) {
         setState(() {
@@ -390,7 +443,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
@@ -427,7 +480,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogCtx),
             child:
                 const Text('Cancelar', style: TextStyle(color: Colors.black54)),
           ),
@@ -439,7 +492,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             ),
             onPressed: () {
               if (passController.text.trim() == adminSecret) {
-                Navigator.pop(context);
+                Navigator.pop(dialogCtx);
                 _launchLevel(node);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -476,7 +529,6 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
       ),
     );
 
-    // Al regresar del nivel, actualiza vidas y progreso de inmediato
     if (mounted) {
       await _refreshAllData();
     }
@@ -573,6 +625,21 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _fetchLevelsAndProgress() async {
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
+
+    // 1. Si no hay conexión, cargar desde caché local
+    if (!hasInternet) {
+      final cachedLevels = cache.getData(_mapLevelsCacheKey);
+      if (cachedLevels != null && cachedLevels is List) {
+        return List<Map<String, dynamic>>.from(
+          cachedLevels.map((e) => Map<String, dynamic>.from(e)),
+        );
+      }
+      return [];
+    }
+
+    // 2. Si hay conexión, consultar Supabase y almacenar copia fresca
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
 
@@ -606,7 +673,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                 if (parsedId != null) completedLevelKeys.add(parsedId);
               }
               if (p['current_level_id'] != null) {
-                final parsedCurr = int.tryParse(p['current_level_id'].toString());
+                final parsedCurr =
+                    int.tryParse(p['current_level_id'].toString());
                 if (parsedCurr != null) {
                   completedLevelKeys.add(parsedCurr);
                   if (parsedCurr > maxCurrentLevel) {
@@ -656,7 +724,10 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           final bool currentIsDone = completedLevelKeys.contains(levelPkId) ||
               completedLevelKeys.contains(levelNum);
 
-          if (prevIsDone || currentIsDone || levelNum <= (maxCurrentLevel + 1) || levelPkId <= (maxCurrentLevel + 1)) {
+          if (prevIsDone ||
+              currentIsDone ||
+              levelNum <= (maxCurrentLevel + 1) ||
+              levelPkId <= (maxCurrentLevel + 1)) {
             isUnlocked = true;
           }
         }
@@ -668,9 +739,18 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
         });
       }
 
+      // Guardar lista enriquecida en la caché
+      await cache.saveData(_mapLevelsCacheKey, enrichedLevels);
+
       return enrichedLevels;
     } catch (e) {
       debugPrint('Error en _fetchLevelsAndProgress: $e');
+      final cachedLevels = cache.getData(_mapLevelsCacheKey);
+      if (cachedLevels != null && cachedLevels is List) {
+        return List<Map<String, dynamic>>.from(
+          cachedLevels.map((e) => Map<String, dynamic>.from(e)),
+        );
+      }
       return [];
     }
   }
@@ -697,13 +777,14 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _levelsFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    _dbLevelsCache.isEmpty) {
                   return const Center(
                       child: CircularProgressIndicator(
                           color: AppColors.primaryYellow));
                 }
 
-                final dbLevels = snapshot.data ?? [];
+                final dbLevels = snapshot.data ?? _dbLevelsCache;
                 _dbLevelsCache = dbLevels;
 
                 if (dbLevels.isNotEmpty && _currentHeaderTitle == "Niveles") {
@@ -861,7 +942,6 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           ),
         ],
       ),
-      // Barra inferior unificada con Liquid Glass amarillo y efecto 3D
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(left: 20, right: 20, bottom: 10),
@@ -876,7 +956,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primaryYellow.withAlpha(240),
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: AppColors.textWhite.withAlpha(220), width: 2.8),
+                    border: Border.all(
+                        color: AppColors.textWhite.withAlpha(220), width: 2.8),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withAlpha(60),
@@ -893,9 +974,11 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                       _buildNavBarItem(
                           'assets/images/Iconos/Icon_barra/Map_icon.png', 1),
                       _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/Biblioteca_icon.png', 2),
+                          'assets/images/Iconos/Icon_barra/Biblioteca_icon.png',
+                          2),
                       _buildNavBarItem(
-                          'assets/images/Iconos/Icon_barra/Ajustes_icon.png', 3),
+                          'assets/images/Iconos/Icon_barra/Ajustes_icon.png',
+                          3),
                     ],
                   ),
                 ),
@@ -944,9 +1027,11 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                         avatarUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.person, color: Colors.black87, size: 28),
+                            const Icon(Icons.person,
+                                color: Colors.black87, size: 28),
                       )
-                    : const Icon(Icons.person, color: Colors.black87, size: 28),
+                    : const Icon(Icons.person,
+                        color: Colors.black87, size: 28),
               ),
             ),
           ),

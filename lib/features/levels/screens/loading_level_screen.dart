@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/levels/screens/lesson_assembler_screen.dart';
 
@@ -48,14 +50,58 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
     super.dispose();
   }
 
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
+
+  String _getLevelCacheKey(int levelId) {
+    return 'cached_full_level_${widget.languageId}_${widget.levelNumber}_$levelId';
+  }
+
   Future<void> _loadLevelDataAndNavigate() async {
+    final cache = await CacheService.instance;
+    final hasInternet = await _hasInternetConnection();
+    int targetLevelId = widget.specificLevelId ?? 0;
+
+    // Intentar buscar ID guardado en caché si targetLevelId es 0
+    final cacheIdKey = 'level_id_lookup_${widget.languageId}_${widget.levelNumber}';
+    if (targetLevelId == 0) {
+      final cachedId = cache.getData(cacheIdKey);
+      if (cachedId != null && cachedId is int) {
+        targetLevelId = cachedId;
+      }
+    }
+
+    final cacheKey = _getLevelCacheKey(targetLevelId);
+
+    // 1. MODO OFFLINE: Si no hay internet, intentar cargar desde el caché local
+    if (!hasInternet) {
+      final cachedData = cache.getData(cacheKey);
+      if (cachedData != null && cachedData is Map) {
+        final lessonsList = List<Map<String, dynamic>>.from(
+          (cachedData['lessons'] as List).map((e) => Map<String, dynamic>.from(e)),
+        );
+        final resolvedLevelId = (cachedData['level_id'] as int?) ?? targetLevelId;
+
+        _navigateToLesson(resolvedLevelId, lessonsList);
+        return;
+      } else {
+        _showErrorDialog(
+          "No tienes conexión a internet y este nivel aún no ha sido descargado en tu dispositivo. Conéctate una vez para jugarlo sin conexión.",
+        );
+        return;
+      }
+    }
+
+    // 2. MODO ONLINE: Consultar Supabase y almacenar copia completa en caché
     try {
       final supabase = Supabase.instance.client;
-      int targetLevelId = widget.specificLevelId ?? 0;
 
-      debugPrint("🟡 INICIANDO CARGA: ID = $targetLevelId, Number = ${widget.levelNumber}, LanguageId = ${widget.languageId}");
+      debugPrint(
+          "🟡 INICIANDO CARGA: ID = $targetLevelId, Number = ${widget.levelNumber}, LanguageId = ${widget.languageId}");
 
-      // 1. Si no viene el ID específico, lo buscamos en la tabla levels
+      // Si no viene el ID específico, lo buscamos en levels
       if (targetLevelId == 0) {
         final levelResponse = await supabase
             .from('levels')
@@ -64,9 +110,9 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
             .eq('level_number', widget.levelNumber)
             .maybeSingle();
 
-        debugPrint("🟡 Búsqueda en 'levels': $levelResponse");
         if (levelResponse != null) {
           targetLevelId = levelResponse['id'];
+          await cache.saveData(cacheIdKey, targetLevelId);
         }
       }
 
@@ -74,13 +120,11 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
         throw Exception("No se encontró el nivel en la base de datos (levels).");
       }
 
-      // 2. Traer lecciones del nivel
+      // Traer lecciones del nivel
       final lessonsResponse = await supabase
           .from('lessons')
           .select()
           .eq('level_id', targetLevelId);
-
-      debugPrint("🟡 Lecciones encontradas para level_id $targetLevelId: ${lessonsResponse.length}");
 
       if (lessonsResponse.isEmpty) {
         throw Exception("La tabla 'lessons' no tiene registros con level_id = $targetLevelId.");
@@ -88,7 +132,7 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
 
       List<Map<String, dynamic>> lessonsList = [];
 
-      // 3. Traer preguntas y opciones de cada lección
+      // Traer preguntas y opciones de cada lección
       for (var lesson in lessonsResponse) {
         final lessonId = lesson['id'];
         final String lessonType =
@@ -98,8 +142,6 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
             .from('questions')
             .select()
             .eq('lesson_id', lessonId);
-
-        debugPrint("🟡 Preguntas encontradas para lesson_id $lessonId: ${questionsResponse.length}");
 
         List<Map<String, dynamic>> questionsList = [];
 
@@ -111,8 +153,6 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
               .select()
               .eq('question_id', questionId);
 
-          debugPrint("🟡 Opciones para question_id $questionId: ${optionsResponse.length}");
-
           questionsList.add({
             ...question,
             'word_translation':
@@ -121,7 +161,7 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
           });
         }
 
-        // Respaldo para lecciones de tipo introducción si no tienen preguntas creadas
+        // Respaldo para lecciones de introducción
         if (questionsList.isEmpty && lessonType == 'introduction') {
           questionsList.add({
             'question_text': lesson['title'] ?? 'Palabras Nuevas',
@@ -144,60 +184,82 @@ class _LoadingLevelScreenState extends State<LoadingLevelScreen>
         });
       }
 
-      final cleanTitle = widget.levelTitle
-          .replaceAll("Cargando ", "")
-          .replaceAll("...", "")
-          .trim();
+      // Guardar nivel completo en caché local
+      await cache.saveData(_getLevelCacheKey(targetLevelId), {
+        'level_id': targetLevelId,
+        'lessons': lessonsList,
+      });
 
-      debugPrint("🟢 CARGA COMPLETADA. Lanzando lección...");
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LessonAssemblerScreen(
-              levelId: targetLevelId,
-              levelTitle: cleanTitle.isNotEmpty ? cleanTitle : "Nivel",
-              lessonsList: lessonsList,
-              languageId: widget.languageId,
-            ),
-          ),
-        );
-      }
+      _navigateToLesson(targetLevelId, lessonsList);
     } catch (e, stack) {
-      debugPrint("🔴 ERROR FATAL CARGANDO NIVEL: $e");
+      debugPrint("🔴 ERROR CARGANDO NIVEL (INTENTANDO CACHÉ): $e");
       debugPrint("🔴 STACKTRACE: $stack");
 
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.redAccent),
-                SizedBox(width: 8),
-                Text("Error de Nivel"),
-              ],
-            ),
-            content: Text(
-              e.toString().replaceAll("Exception: ", ""),
-              style: const TextStyle(fontSize: 14),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pop(context);
-                },
-                child: const Text("Regresar al mapa"),
-              ),
-            ],
-          ),
+      // Si la consulta en red falló por señal débil, buscar si existe copia local
+      final cachedData = cache.getData(_getLevelCacheKey(targetLevelId));
+      if (cachedData != null && cachedData is Map) {
+        final lessonsList = List<Map<String, dynamic>>.from(
+          (cachedData['lessons'] as List).map((e) => Map<String, dynamic>.from(e)),
         );
+        _navigateToLesson(targetLevelId, lessonsList);
+        return;
       }
+
+      _showErrorDialog(e.toString().replaceAll("Exception: ", ""));
     }
+  }
+
+  void _navigateToLesson(int levelId, List<Map<String, dynamic>> lessonsList) {
+    final cleanTitle = widget.levelTitle
+        .replaceAll("Cargando ", "")
+        .replaceAll("...", "")
+        .trim();
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LessonAssemblerScreen(
+            levelId: levelId,
+            levelTitle: cleanTitle.isNotEmpty ? cleanTitle : "Nivel",
+            lessonsList: lessonsList,
+            languageId: widget.languageId,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showErrorDialog(String message) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text("Aviso del Nivel"),
+          ],
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text("Regresar al mapa"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

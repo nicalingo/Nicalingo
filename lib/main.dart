@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_colors.dart';
 import 'core/screens/splash_screen.dart'; 
+// 1. AGREGAR ESTE IMPORT:
+import 'core/services/sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +21,10 @@ Future<void> main() async {
       authFlowType: AuthFlowType.implicit,
     ),
   );
+
+  // 2. AGREGAR ESTA LÍNEA PARA EL MODO OFFLINE/SYNC:
+  SyncService.instance.init();
+
   runApp(const MyApp());
 }
 
