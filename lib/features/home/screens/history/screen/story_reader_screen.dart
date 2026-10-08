@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 
 class StoryReaderScreen extends StatefulWidget {
@@ -19,6 +23,55 @@ class StoryReaderScreen extends StatefulWidget {
 
 class _StoryReaderScreenState extends State<StoryReaderScreen> {
   bool _isTranslated = false;
+  Uint8List? _cachedImageBytes;
+  bool _isLoadingImage = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImageOfflineSupport();
+  }
+
+  // Permite ver la portada incluso si se descargó una sola vez y luego no hay señal
+  Future<void> _loadImageOfflineSupport() async {
+    final imageUrl = (widget.story['content_image_asset'] ?? widget.story['image_asset'])?.toString();
+    if (imageUrl == null || (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))) {
+      return;
+    }
+
+    final cache = await CacheService.instance;
+    final cacheKey = 'img_cache_${widget.story['id']}';
+
+    // 1. Revisar si ya la teníamos guardada en local
+    final cachedBase64 = cache.getData(cacheKey);
+    if (cachedBase64 != null && cachedBase64 is String) {
+      if (mounted) {
+        setState(() {
+          _cachedImageBytes = base64Decode(cachedBase64);
+        });
+      }
+      return;
+    }
+
+    // 2. Si no estaba en local, descargarla una vez y guardarla para el futuro
+    setState(() => _isLoadingImage = true);
+    try {
+      final response = await http.get(Uri.parse(imageUrl)).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        await cache.saveData(cacheKey, base64Encode(bytes));
+        if (mounted) {
+          setState(() {
+            _cachedImageBytes = bytes;
+            _isLoadingImage = false;
+          });
+        }
+      }
+    } catch (_) {
+      // Sin internet y sin caché previa: se usará el fallback visual
+      if (mounted) setState(() => _isLoadingImage = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -249,6 +302,15 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
   }
 
   Widget _buildStoryCover(String? path) {
+    if (_cachedImageBytes != null) {
+      return Image.memory(
+        _cachedImageBytes!,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) =>
+            const Icon(Icons.menu_book, size: 80, color: Colors.white),
+      );
+    }
+
     if (path == null || path.trim().isEmpty) {
       return Image.asset(
         'assets/images/mascara.png',
@@ -259,6 +321,11 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
     }
 
     if (path.startsWith('http://') || path.startsWith('https://')) {
+      if (_isLoadingImage) {
+        return const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryYellow, strokeWidth: 2),
+        );
+      }
       return Image.network(
         path,
         fit: BoxFit.contain,

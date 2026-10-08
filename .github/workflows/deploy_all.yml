@@ -31,7 +31,7 @@ jobs:
         id: version
         run: |
           RAW_VERSION=$(grep '^version: ' pubspec.yaml | sed 's/version: //')
-          BASE_VERSION=$(echo$RAW_VERSION | cut -d'+' -f1)
+          BASE_VERSION=$(echo "$RAW_VERSION" | cut -d'+' -f1 | tr -d '[:space:]')
           echo "version_name=$BASE_VERSION" >> $GITHUB_OUTPUT
           echo "release_tag=v$BASE_VERSION" >> $GITHUB_OUTPUT
 
@@ -158,7 +158,7 @@ jobs:
 
       - name: Comprimir Windows en ZIP
         shell: pwsh
-        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath nicalingo_windows.zip
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath nicalingo_windows.zip -Force
 
       - name: Guardar Windows ZIP como artefacto
         uses: actions/upload-artifact@v4
@@ -189,6 +189,7 @@ jobs:
           body: "Actualización automática: Compilación #${{ needs.prepare-version.outputs.build_number }} para Android, Windows y Web."
           draft: false
           prerelease: false
+          make_latest: true
           files: |
             release-files/Nicalingo.apk
             release-files/nicalingo_web.zip

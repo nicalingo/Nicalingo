@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_settings.dart';
@@ -24,6 +26,8 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
   List<Map<String, dynamic>> _filteredStories = [];
   final TextEditingController _searchController = TextEditingController();
 
+  static const String _cacheKey = 'cached_library_stories';
+
   @override
   void initState() {
     super.initState();
@@ -37,65 +41,102 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
     super.dispose();
   }
 
+  // Procesa y formatea el JSON tanto si viene de Supabase como si viene de la caché
+  List<Map<String, dynamic>> _mapStoriesResponse(List<dynamic> rawData) {
+    return List<Map<String, dynamic>>.from(
+      rawData.map((story) {
+        final translations = story['library_story_translations'] as List<dynamic>? ?? [];
+
+        final activeLang = (widget.currentLanguageCode ?? "Mískito").toLowerCase();
+        final translation = translations.firstWhere(
+          (t) {
+            final langData = t['languages'] as Map<String, dynamic>?;
+            final langName = (langData?['name'] ?? '').toString().toLowerCase();
+            final langCode = (langData?['code'] ?? '').toString().toLowerCase();
+            return langName.contains(activeLang) || langCode == activeLang;
+          },
+          orElse: () => translations.isNotEmpty ? translations.first : <String, dynamic>{},
+        ) as Map<String, dynamic>;
+
+        return {
+          'id': story['id'],
+          'image_asset': story['image_asset'],
+          'content_image_asset': story['content_image_asset'],
+          'tag': story['tag'],
+          'author': story['author'],
+          'title': story['title'] ?? 'Sin título',
+          'description': story['description'] ?? '',
+          'content': story['content'] ?? story['description'] ?? '',
+          'title_translation': translation['title'] ?? story['title'],
+          'description_translation': translation['description'] ?? story['description'],
+          'content_translation': translation['content'] ?? translation['description'],
+          'translations': translations,
+        };
+      }),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _fetchStories() async {
-    try {
-      final response = await Supabase.instance.client
-          .from('library_stories')
-          .select('''
-            id,
-            title,
-            description,
-            content,
-            image_asset,
-            content_image_asset,
-            tag,
-            author,
-            library_story_translations (
+    final cache = await CacheService.instance;
+
+    // 1. Revisar si hay conexión a internet
+    final connectivity = await Connectivity().checkConnectivity();
+    final hasInternet = !connectivity.contains(ConnectivityResult.none);
+
+    if (hasInternet) {
+      try {
+        final response = await Supabase.instance.client
+            .from('library_stories')
+            .select('''
+              id,
               title,
               description,
               content,
-              language_id,
-              languages (
-                id,
-                name,
-                code
+              image_asset,
+              content_image_asset,
+              tag,
+              author,
+              library_story_translations (
+                title,
+                description,
+                content,
+                language_id,
+                languages (
+                  id,
+                  name,
+                  code
+                )
               )
-            )
-          ''')
-          .order('id', ascending: true);
+            ''')
+            .order('id', ascending: true);
 
-      final List<Map<String, dynamic>> stories = List<Map<String, dynamic>>.from(
-        (response as List).map((story) {
-          final translations = story['library_story_translations'] as List<dynamic>? ?? [];
+        // Guardar copia fresca en caché
+        await cache.saveData(_cacheKey, response);
 
-          final activeLang = (widget.currentLanguageCode ?? "Mískito").toLowerCase();
-          final translation = translations.firstWhere(
-            (t) {
-              final langData = t['languages'] as Map<String, dynamic>?;
-              final langName = (langData?['name'] ?? '').toString().toLowerCase();
-              final langCode = (langData?['code'] ?? '').toString().toLowerCase();
-              return langName.contains(activeLang) || langCode == activeLang;
-            },
-            orElse: () => translations.isNotEmpty ? translations.first : <String, dynamic>{},
-          ) as Map<String, dynamic>;
+        final stories = _mapStoriesResponse(response as List<dynamic>);
 
-          return {
-            'id': story['id'],
-            'image_asset': story['image_asset'],
-            'content_image_asset': story['content_image_asset'],
-            'tag': story['tag'],
-            'author': story['author'],
-            'title': story['title'] ?? 'Sin título',
-            'description': story['description'] ?? '',
-            'content': story['content'] ?? story['description'] ?? '',
-            'title_translation': translation['title'] ?? story['title'],
-            'description_translation': translation['description'] ?? story['description'],
-            'content_translation': translation['content'] ?? translation['description'],
-            'translations': translations,
-          };
-        }),
-      );
+        if (mounted) {
+          setState(() {
+            _allStories = stories;
+            _filteredStories = stories;
+          });
+        }
+        return stories;
+      } catch (e) {
+        debugPrint('Error de red al consultar Supabase, usando caché: $e');
+        // Si Supabase falla por señal inestable, cae a la caché local
+        return _loadFromCache(cache);
+      }
+    } else {
+      // 2. Modo Offline: Cargar directamente desde el caché local
+      return _loadFromCache(cache);
+    }
+  }
 
+  List<Map<String, dynamic>> _loadFromCache(CacheService cache) {
+    final cachedData = cache.getData(_cacheKey);
+    if (cachedData != null && cachedData is List) {
+      final stories = _mapStoriesResponse(cachedData);
       if (mounted) {
         setState(() {
           _allStories = stories;
@@ -103,10 +144,8 @@ class _HomeBibliotecaScreenState extends State<HomeBibliotecaScreen> {
         });
       }
       return stories;
-    } catch (e) {
-      debugPrint('Error cargando historias: $e');
-      return [];
     }
+    return [];
   }
 
   Future<void> _refreshStories() async {

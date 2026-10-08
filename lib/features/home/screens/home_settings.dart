@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:nicalingo/core/services/cache_service.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
 import 'package:nicalingo/features/home/screens/home_perfil.dart';
 import 'package:nicalingo/features/home/screens/home_biblioteca.dart';
@@ -22,6 +24,12 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   final int _currentIndex = 3;
   bool _soundEnabled = true;
   bool _isDownloading = false;
+
+  // Verifica si el dispositivo cuenta con conexión a internet activa
+  Future<bool> _hasInternetConnection() async {
+    final connectivity = await Connectivity().checkConnectivity();
+    return !connectivity.contains(ConnectivityResult.none);
+  }
 
   // Solo se muestra si está en la Web Y el sistema operativo es compatible
   bool get _canDownloadApp {
@@ -46,6 +54,19 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
 
   Future<void> _handleWebDownload() async {
     if (_isDownloading) return;
+
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tienes conexión a internet para descargar el instalador.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _isDownloading = true);
 
@@ -137,6 +158,22 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   }
 
   Future<void> _changePassword() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para cambiar tu contraseña.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
@@ -291,6 +328,14 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                       : () async {
                           if (!formKey.currentState!.validate()) return;
 
+                          final isOnline = await _hasInternetConnection();
+                          if (!isOnline) {
+                            setDialogState(() {
+                              dialogError = "Se perdió la conexión a internet.";
+                            });
+                            return;
+                          }
+
                           final currentPassword = currentPasswordController.text.trim();
                           final newPassword = newPasswordController.text.trim();
                           final email = Supabase.instance.client.auth.currentUser?.email;
@@ -301,8 +346,6 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                             });
                             return;
                           }
-
-                          final messenger = ScaffoldMessenger.of(context);
 
                           setDialogState(() {
                             isLoading = true;
@@ -323,7 +366,7 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
                               Navigator.pop(dialogContext);
                             }
 
-                            messenger.showSnackBar(
+                            scaffoldMessenger.showSnackBar(
                               const SnackBar(
                                 content: Text('¡Contraseña actualizada con éxito!'),
                                 backgroundColor: Colors.green,
@@ -370,6 +413,22 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
   }
 
   Future<void> _logout() async {
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Necesitas conexión a internet para cerrar sesión de forma segura.'),
+            backgroundColor: Color(0xFFE64638),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -413,6 +472,10 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
       try {
         await Supabase.instance.client.auth.signOut();
 
+        // Limpiar caché local al salir
+        final cache = await CacheService.instance;
+        await cache.clearPendingActions();
+
         if (!mounted) return;
 
         Navigator.of(context, rootNavigator: true).pop();
@@ -426,7 +489,7 @@ class _HomeSettingsScreenState extends State<HomeSettingsScreen> {
 
         Navigator.of(context, rootNavigator: true).pop();
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Error al cerrar sesión: $e'),
             backgroundColor: Colors.redAccent,
