@@ -666,7 +666,7 @@ class _LessonTemplateContainerState extends State<LessonTemplateContainer> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Image.asset(
-                            'assets/images/Iconos/coco_con_sombrero.png',
+                            'assets/images/coco_con_sombrero.png',
                             height: 125,
                             width: 125,
                             errorBuilder: (context, error, stackTrace) =>
