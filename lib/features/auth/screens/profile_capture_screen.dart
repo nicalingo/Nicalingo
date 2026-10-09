@@ -17,8 +17,23 @@ class ProfileCaptureScreen extends StatefulWidget {
 }
 
 class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
-  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _apellidosController = TextEditingController();
+  final TextEditingController _edadController = TextEditingController();
   final TextEditingController _nicknameController = TextEditingController();
+
+  String? _selectedDepartamento;
+  String? _selectedSexo;
+
+  final List<String> _departamentos = [
+    'Boaco', 'Carazo', 'Chinandega', 'Chontales', 'Estelí',
+    'Granada', 'Jinotega', 'León', 'Madriz', 'Managua',
+    'Masaya', 'Matagalpa', 'Nueva Segovia', 'Rivas',
+    'Río San Juan', 'RACCN', 'RACCS'
+  ];
+
+  final List<String> _opcionesSexo = ['M', 'F', 'Otro', 'Prefiero no decir'];
+
   final ImagePicker _picker = ImagePicker();
   File? _imageFile;
   bool _isLoading = false;
@@ -30,22 +45,34 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
   }
 
   void _loadInitialUserData() {
-    if (widget.signupData?.fullName != null &&
-        widget.signupData!.fullName!.isNotEmpty) {
-      _fullNameController.text = widget.signupData!.fullName!;
+    if (widget.signupData?.name != null && widget.signupData!.name!.isNotEmpty) {
+      _nameController.text = widget.signupData!.name!;
     }
-    if (widget.signupData?.nickname != null &&
-        widget.signupData!.nickname!.isNotEmpty) {
+    if (widget.signupData?.apellidos != null && widget.signupData!.apellidos!.isNotEmpty) {
+      _apellidosController.text = widget.signupData!.apellidos!;
+    }
+    if (widget.signupData?.departamento != null && widget.signupData!.departamento!.isNotEmpty) {
+      _selectedDepartamento = widget.signupData!.departamento;
+    }
+    if (widget.signupData?.edad != null) {
+      _edadController.text = widget.signupData!.edad.toString();
+    }
+    if (widget.signupData?.sexo != null && widget.signupData!.sexo!.isNotEmpty) {
+      _selectedSexo = widget.signupData!.sexo;
+    }
+    if (widget.signupData?.nickname != null && widget.signupData!.nickname!.isNotEmpty) {
       _nicknameController.text = widget.signupData!.nickname!;
     }
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
-      final metaName = user.userMetadata?['full_name'] ??
-          user.userMetadata?['name'] ??
-          '';
-      if (metaName.isNotEmpty && _fullNameController.text.isEmpty) {
-        _fullNameController.text = metaName;
+      final metaName = user.userMetadata?['name'] ?? '';
+      final metaApellidos = user.userMetadata?['apellidos'] ?? '';
+      if (metaName.isNotEmpty && _nameController.text.isEmpty) {
+        _nameController.text = metaName;
+      }
+      if (metaApellidos.isNotEmpty && _apellidosController.text.isEmpty) {
+        _apellidosController.text = metaApellidos;
       }
     }
   }
@@ -122,7 +149,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
     );
   }
 
-  // Verifica en Supabase si el apodo ya existe
   Future<bool> _isNicknameAvailable(String nickname, String? currentUserId) async {
     try {
       final supabase = Supabase.instance.client;
@@ -144,13 +170,56 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
   }
 
   Future<void> _handleEntrar() async {
-    final fullName = _fullNameController.text.trim();
+    final name = _nameController.text.trim();
+    final apellidos = _apellidosController.text.trim();
+    final edadText = _edadController.text.trim();
     final nickname = _nicknameController.text.trim().toLowerCase();
 
-    if (fullName.isEmpty) {
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Por favor, ingresá tu nombre completo'),
+          content: Text('Por favor, ingresá tus nombres'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (apellidos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, ingresá tus apellidos'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedDepartamento == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, seleccioná tu departamento'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final edad = int.tryParse(edadText);
+    if (edad == null || edad < 0 || edad > 120) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, ingresá una edad válida (0-120)'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedSexo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, seleccioná tu sexo'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -183,7 +252,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
-      // 1. Validar unicidad del apodo
       final isAvailable = await _isNicknameAvailable(nickname, user?.id);
       if (!isAvailable) {
         if (!mounted) return;
@@ -197,7 +265,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         return;
       }
 
-      // 2. Subida de imagen al storage si existe
       String? avatarUrl;
       if (_imageFile != null && user != null) {
         try {
@@ -217,10 +284,13 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         }
       }
 
-      // 3. Flujo onboarding / registro: hereda fullName y nickname
       if (widget.signupData != null) {
         final updatedSignupData = widget.signupData!.copyWith(
-          fullName: fullName,
+          name: name,
+          apellidos: apellidos,
+          departamento: _selectedDepartamento,
+          edad: edad,
+          sexo: _selectedSexo,
           nickname: nickname,
           avatarUrl: avatarUrl,
         );
@@ -237,11 +307,14 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
         return;
       }
 
-      // 4. Guardado directo para usuarios ya logueados
       if (user != null) {
         final profileData = {
           'id': user.id,
-          'full_name': fullName,
+          'name': name,
+          'apellidos': apellidos,
+          'departamento': _selectedDepartamento,
+          'edad': edad,
+          'sexo': _selectedSexo,
           'nickname': nickname,
           'updated_at': DateTime.now().toIso8601String(),
         };
@@ -279,7 +352,9 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
 
   @override
   void dispose() {
-    _fullNameController.dispose();
+    _nameController.dispose();
+    _apellidosController.dispose();
+    _edadController.dispose();
     _nicknameController.dispose();
     super.dispose();
   }
@@ -324,6 +399,79 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontFamily: 'Inter',
+                color: Colors.grey.shade500,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDropdownField({
+    required String label,
+    required String hint,
+    required String? value,
+    required List<String> items,
+    required void Function(String?) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            color: Colors.white70,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey(value),
+            initialValue: value,
+            items: items.map((item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(
+                  item,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              );
+            }).toList(),
+            onChanged: onChanged,
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: TextStyle(
@@ -416,15 +564,56 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Campo 1: Nombre Completo
                       _buildField(
-                        controller: _fullNameController,
-                        label: 'NOMBRE COMPLETO',
-                        hint: 'Ej. Juan Pérez',
+                        controller: _nameController,
+                        label: 'NOMBRES',
+                        hint: 'Ej. Juan Carlos',
                       ),
                       const SizedBox(height: 16),
 
-                      // Campo 2: Apodo (Único)
+                      _buildField(
+                        controller: _apellidosController,
+                        label: 'APELLIDOS',
+                        hint: 'Ej. Pérez Gómez',
+                      ),
+                      const SizedBox(height: 16),
+
+                      _buildDropdownField(
+                        label: 'DEPARTAMENTO',
+                        hint: 'Seleccioná tu departamento',
+                        value: _selectedDepartamento,
+                        items: _departamentos,
+                        onChanged: (val) => setState(() => _selectedDepartamento = val),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: _buildField(
+                              controller: _edadController,
+                              label: 'EDAD',
+                              hint: 'Ej. 20',
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 6,
+                            child: _buildDropdownField(
+                              label: 'SEXO',
+                              hint: 'Seleccionar',
+                              value: _selectedSexo,
+                              items: _opcionesSexo,
+                              onChanged: (val) => setState(() => _selectedSexo = val),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
                       _buildField(
                         controller: _nicknameController,
                         label: 'TU APODO (ÚNICO)',
@@ -432,7 +621,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Campo 3: Foto de Perfil
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -523,7 +711,6 @@ class _ProfileCaptureScreenState extends State<ProfileCaptureScreen> {
                       ),
                       const SizedBox(height: 28),
 
-                      // Botón Continuar
                       SizedBox(
                         width: double.infinity,
                         height: 52,

@@ -62,7 +62,7 @@ flutter:
     - assets/images/Iconos/background/
     - assets/images/arcade/
     - assets/images/arcade/icononos/
-    - assets/images/arcade/juegos/
+    - assets/images/arcade/juegos/atrapa_coco/
 
   fonts:
     - family: Noot
