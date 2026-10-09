@@ -67,14 +67,13 @@ class ArcadeScreen extends StatelessWidget {
                 childAspectRatio: 0.74,
                 children: [
                   _buildGameCard(
-                    title: "Come con Coco",
+                    title: "Atrapa con Coco",
                     tag: "Refuerzo",
                     imageAsset: "assets/images/arcade/icononos/come_coco.jpeg",
                     cardColor: const Color(0xFFFFD180),
                     isEnabled: true,
                     actionText: "Jugar",
                     onTap: () {
-                      // Conexión futura a Come con Coco
                     },
                   ),
                   _buildGameCard(
@@ -85,7 +84,6 @@ class ArcadeScreen extends StatelessWidget {
                     isEnabled: true,
                     actionText: "Jugar",
                     onTap: () {
-                      // Conexión futura a Memoria Ancestral
                     },
                   ),
                   _buildGameCard(
@@ -96,7 +94,7 @@ class ArcadeScreen extends StatelessWidget {
                     isEnabled: true,
                     actionText: "Jugar",
                     onTap: () {
-                      // Conexión futura a Trivia
+
                     },
                   ),
                   _buildGameCard(
@@ -107,7 +105,6 @@ class ArcadeScreen extends StatelessWidget {
                     isEnabled: false,
                     actionText: "Jugar",
                     onTap: () {
-                      // Conexión futura a Repite con Coco
                     },
                   ),
                   _buildGameCard(
@@ -118,7 +115,6 @@ class ArcadeScreen extends StatelessWidget {
                     isEnabled: true,
                     actionText: "Abrir",
                     onTap: () {
-                      // Conexión al asistente / Diccionario Coco
                     },
                   ),
                   _buildGameCard(
@@ -185,7 +181,6 @@ class ArcadeScreen extends StatelessWidget {
               ),
             ),
           ),
-          // Muestra la imagen si existe, o el ícono como fallback
           Expanded(
             child: Center(
               child: imageAsset != null

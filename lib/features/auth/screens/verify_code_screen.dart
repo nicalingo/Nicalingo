@@ -87,11 +87,16 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         final user = response.user ?? supabase.auth.currentUser;
 
         if (user != null) {
+          // Guardar perfil completo con la nueva estructura de columnas
           await supabase.from('profiles').upsert({
             'id': user.id,
             'email': email,
-            'role': 'user',
-            'full_name': widget.signupData.fullName,
+            'role': 'student',
+            'name': widget.signupData.name,
+            'apellidos': widget.signupData.apellidos,
+            'departamento': widget.signupData.departamento,
+            'edad': widget.signupData.edad,
+            'sexo': widget.signupData.sexo,
             'nickname': widget.signupData.nickname,
             'avatar_url': widget.signupData.avatarUrl,
             'created_at': DateTime.now().toIso8601String(),
@@ -120,10 +125,15 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
             }
           }
 
+          // Limpieza de datos temporales en SharedPreferences
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('pending_verification');
           await prefs.remove('temp_email');
-          await prefs.remove('temp_full_name');
+          await prefs.remove('temp_name');
+          await prefs.remove('temp_apellidos');
+          await prefs.remove('temp_departamento');
+          await prefs.remove('temp_edad');
+          await prefs.remove('temp_sexo');
           await prefs.remove('temp_nickname');
           await prefs.remove('temp_avatar');
           await prefs.remove('temp_language');

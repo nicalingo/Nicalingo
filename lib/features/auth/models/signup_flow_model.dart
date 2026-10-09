@@ -1,6 +1,10 @@
 class SignupFlowModel {
   final String email;
-  final String? fullName; // <-- Nombre completo agregado
+  final String? name;
+  final String? apellidos;
+  final String? departamento;
+  final int? edad;
+  final String? sexo;
   final String? nickname;
   final String? avatarUrl;
   final String? languageId;
@@ -8,7 +12,11 @@ class SignupFlowModel {
 
   SignupFlowModel({
     required this.email,
-    this.fullName,
+    this.name,
+    this.apellidos,
+    this.departamento,
+    this.edad,
+    this.sexo,
     this.nickname,
     this.avatarUrl,
     this.languageId,
@@ -17,7 +25,11 @@ class SignupFlowModel {
 
   SignupFlowModel copyWith({
     String? email,
-    String? fullName,
+    String? name,
+    String? apellidos,
+    String? departamento,
+    int? edad,
+    String? sexo,
     String? nickname,
     String? avatarUrl,
     String? languageId,
@@ -25,7 +37,11 @@ class SignupFlowModel {
   }) {
     return SignupFlowModel(
       email: email ?? this.email,
-      fullName: fullName ?? this.fullName,
+      name: name ?? this.name,
+      apellidos: apellidos ?? this.apellidos,
+      departamento: departamento ?? this.departamento,
+      edad: edad ?? this.edad,
+      sexo: sexo ?? this.sexo,
       nickname: nickname ?? this.nickname,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       languageId: languageId ?? this.languageId,

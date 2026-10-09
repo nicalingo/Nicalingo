@@ -63,17 +63,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
         final passwordText = _passwordController.text.trim();
         final supabase = Supabase.instance.client;
 
-        // 1. Registra al usuario en Auth y envía el correo con código OTP
+        // 1. Registra al usuario en Auth enviando la metadata que consume handle_new_user()
         await supabase.auth.signUp(
           email: emailText,
           password: passwordText,
+          data: {
+            'name': widget.signupData.name,
+            'apellidos': widget.signupData.apellidos,
+            'departamento': widget.signupData.departamento,
+            'edad': widget.signupData.edad,
+            'sexo': widget.signupData.sexo,
+            'nickname': widget.signupData.nickname,
+            'avatar_url': widget.signupData.avatarUrl,
+            'role': 'student',
+          },
         );
 
         // Guardado de respaldo de todos los campos en SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('pending_verification', true);
         await prefs.setString('temp_email', emailText);
-        await prefs.setString('temp_full_name', widget.signupData.fullName ?? '');
+        await prefs.setString('temp_name', widget.signupData.name ?? '');
+        await prefs.setString('temp_apellidos', widget.signupData.apellidos ?? '');
+        await prefs.setString('temp_departamento', widget.signupData.departamento ?? '');
+        await prefs.setInt('temp_edad', widget.signupData.edad ?? 0);
+        await prefs.setString('temp_sexo', widget.signupData.sexo ?? '');
         await prefs.setString('temp_nickname', widget.signupData.nickname ?? '');
         await prefs.setString('temp_avatar', widget.signupData.avatarUrl ?? '');
         await prefs.setString('temp_language', widget.signupData.languageId ?? '');

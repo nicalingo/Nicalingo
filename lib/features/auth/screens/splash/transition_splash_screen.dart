@@ -50,15 +50,20 @@ class _InitialSplashScreenState extends State<InitialSplashScreen> {
     final isPending = prefs.getBool('pending_verification') ?? false;
 
     if (isPending) {
-      // Reconstruimos sus datos desde la memoria
+      // Reconstruimos sus datos completos desde la memoria persistente
       final pendingData = SignupFlowModel(
         email: prefs.getString('temp_email') ?? '',
+        name: prefs.getString('temp_name'),
+        apellidos: prefs.getString('temp_apellidos'),
+        departamento: prefs.getString('temp_departamento'),
+        edad: prefs.getInt('temp_edad'),
+        sexo: prefs.getString('temp_sexo'),
         nickname: prefs.getString('temp_nickname'),
         avatarUrl: prefs.getString('temp_avatar'),
         languageId: prefs.getString('temp_language'),
       );
 
-      // Lo mandamos directo a meter el código
+      // Lo mandamos directo a meter el código con todos los datos intactos
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
