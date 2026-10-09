@@ -14,7 +14,7 @@ class FallingItem {
     required this.id,
     required this.imageAsset,
     required this.x,
-    this.y = -0.1,
+    this.y = 0.0,
     required this.speed,
     this.size = 56.0,
   });
@@ -98,6 +98,8 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
     super.initState();
     _setupAnimations();
     _pickNewTarget();
+    _spawnItem();
+    _spawnItem();
     _startGameLoop();
   }
 
@@ -142,6 +144,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
   }
 
   void _startGameLoop() {
+    _gameTimer?.cancel();
     _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted || _isGameOver) return;
       _updateGame();
@@ -150,7 +153,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
 
   void _spawnItem() {
     final bool shouldSpawnTarget =
-        _random.nextDouble() < 0.42 && !_items.any((i) => i.id == _currentTarget['id']);
+        _random.nextDouble() < 0.45 && !_items.any((i) => i.id == _currentTarget['id']);
 
     final itemData = shouldSpawnTarget
         ? _currentTarget
@@ -161,8 +164,8 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
         id: itemData['id']!,
         imageAsset: itemData['asset']!,
         x: 0.12 + _random.nextDouble() * 0.76,
-        y: -0.08,
-        speed: 0.004 + _random.nextDouble() * 0.003,
+        y: 0.0,
+        speed: 0.007 + _random.nextDouble() * 0.005,
       ),
     );
   }
@@ -180,6 +183,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
     });
 
     _pickNewTarget();
+    _spawnItem();
   }
 
   void _onWrongCatch() {
@@ -303,6 +307,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
       _isGameOver = false;
       _items.clear();
       _pickNewTarget();
+      _spawnItem();
     });
     _startGameLoop();
   }
@@ -310,7 +315,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
   void _updateGame() {
     setState(() {
       _ticksSinceLastSpawn++;
-      if (_ticksSinceLastSpawn > 72) {
+      if (_ticksSinceLastSpawn > 45) {
         _spawnItem();
         _ticksSinceLastSpawn = 0;
       }
@@ -319,6 +324,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
         final item = _items[i];
         item.y += item.speed;
 
+        // Detección de colisión con Coco
         if (item.y >= 0.74 && item.y <= 0.86) {
           final double distance = (item.x - _cocoX).abs();
           if (distance < 0.14) {
@@ -333,10 +339,8 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
           }
         }
 
+        // Si se sale de pantalla
         if (item.y > 1.05) {
-          if (item.id == _currentTarget['id']) {
-            _onWrongCatch();
-          }
           _items.removeAt(i);
         }
       }
