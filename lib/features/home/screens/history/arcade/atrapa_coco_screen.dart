@@ -75,6 +75,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
   int _lives = 3;
   double _cocoX = 0.5;
   final double _cocoSize = 100.0;
+  static const double _cocoRelativeY = 0.82; // Posición base de Coco (82% de altura)
 
   Ticker? _ticker;
   Duration _lastTick = Duration.zero;
@@ -201,10 +202,10 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
         final item = _items[i];
         item.y += item.speed * dt;
 
-        // Zona de Coco en Y (entre 72% y 88% de la pantalla)
-        if (item.y >= 0.72 && item.y <= 0.88) {
+        // Zona de impacto centrada en la posición de Coco
+        if ((item.y - _cocoRelativeY).abs() <= 0.06) {
           final double distance = (item.x - _cocoX).abs();
-          if (distance < 0.15) {
+          if (distance < 0.14) {
             if (item.id == _currentTarget['id']) {
               _onCorrectCatch();
               break;
@@ -216,9 +217,17 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
           }
         }
 
-        // Si sale de pantalla por abajo
+        // Si sale de pantalla por la parte inferior
         if (item.y > 1.05) {
+          final bool missedTarget = item.id == _currentTarget['id'];
           _items.removeAt(i);
+          if (missedTarget) {
+            _onWrongCatch();
+            // Aseguramos que haya un objetivo nuevo en camino si aún sigue jugando
+            if (!_isGameOver && !_items.any((elem) => elem.id == _currentTarget['id'])) {
+              _spawnItem();
+            }
+          }
         }
       }
     });
@@ -263,7 +272,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
       context: context,
       barrierDismissible: false,
       barrierLabel: 'GameOver',
-      barrierColor: Colors.black.withAlpha(160),
+      barrierColor: Colors.black.withValues(alpha: 0.65),
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (ctx, anim1, anim2) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, secondaryAnim, child) {
@@ -299,7 +308,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(30),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -355,6 +364,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
 
   @override
   void dispose() {
+    _ticker?.stop();
     _ticker?.dispose();
     _winAnimController.dispose();
     _shakeAnimController.dispose();
@@ -382,10 +392,10 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                // Flash rojo al fallar
+                // Flash rojo al cometer fallo
                 if (_showErrorFlash)
                   Positioned.fill(
-                    child: Container(color: Colors.red.withAlpha(60)),
+                    child: Container(color: Colors.red.withValues(alpha: 0.25)),
                   ),
 
                 // Barra superior (vidas y puntos)
@@ -398,7 +408,10 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
                     children: [
                       IconButton(
                         icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          _ticker?.stop();
+                          Navigator.pop(context);
+                        },
                       ),
                       Row(
                         children: List.generate(3, (index) {
@@ -486,7 +499,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
                   ),
                 ),
 
-                // Ítems cayendo (Posicionados usando LayoutBuilder exacto)
+                // Ítems cayendo
                 ..._items.map((item) {
                   return Positioned(
                     left: (item.x * gameWidth) - (item.size / 2),
@@ -513,7 +526,7 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
                 if (_showSuccessBadge)
                   Positioned(
                     left: (_cocoX * gameWidth) - 30,
-                    bottom: 140,
+                    top: (gameHeight * _cocoRelativeY) - 50,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
@@ -531,13 +544,13 @@ class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
                     ),
                   ),
 
-                // Coco con Shake Animation
+                // Coco con Shake Animation sincronizado
                 AnimatedBuilder(
                   animation: _shakeAnimController,
                   builder: (context, child) {
                     return Positioned(
                       left: (_cocoX * gameWidth) - (_cocoSize / 2) + _shakeAnim.value,
-                      bottom: 40,
+                      top: (gameHeight * _cocoRelativeY) - (_cocoSize / 2),
                       child: child!,
                     );
                   },
