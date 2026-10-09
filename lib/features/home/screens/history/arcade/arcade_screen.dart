@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nicalingo/core/theme/app_colors.dart';
+import 'atrapa_coco_screen.dart';
 
 class ArcadeScreen extends StatelessWidget {
   final String? currentLanguageCode;
@@ -74,6 +75,14 @@ class ArcadeScreen extends StatelessWidget {
                     isEnabled: true,
                     actionText: "Jugar",
                     onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AtrapaCocoScreen(
+                            currentLanguageCode: currentLanguageCode,
+                          ),
+                        ),
+                      );
                     },
                   ),
                   _buildGameCard(
@@ -83,8 +92,7 @@ class ArcadeScreen extends StatelessWidget {
                     cardColor: const Color(0xFF80D8FF),
                     isEnabled: true,
                     actionText: "Jugar",
-                    onTap: () {
-                    },
+                    onTap: () {},
                   ),
                   _buildGameCard(
                     title: "Trivia Cultural",
@@ -93,9 +101,7 @@ class ArcadeScreen extends StatelessWidget {
                     cardColor: const Color(0xFFA7FFEB),
                     isEnabled: true,
                     actionText: "Jugar",
-                    onTap: () {
-
-                    },
+                    onTap: () {},
                   ),
                   _buildGameCard(
                     title: "Repite con Coco",
@@ -104,8 +110,7 @@ class ArcadeScreen extends StatelessWidget {
                     cardColor: const Color(0xFFD1C4E9),
                     isEnabled: false,
                     actionText: "Jugar",
-                    onTap: () {
-                    },
+                    onTap: () {},
                   ),
                   _buildGameCard(
                     title: "Diccionario Coco",
@@ -114,8 +119,7 @@ class ArcadeScreen extends StatelessWidget {
                     cardColor: const Color(0xFFFFE082),
                     isEnabled: true,
                     actionText: "Abrir",
-                    onTap: () {
-                    },
+                    onTap: () {},
                   ),
                   _buildGameCard(
                     title: "LingoClip",

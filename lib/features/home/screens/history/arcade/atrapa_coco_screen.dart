@@ -1,0 +1,565 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+
+class FallingItem {
+  final String id;
+  final String imageAsset;
+  double x;
+  double y;
+  final double speed;
+  final double size;
+
+  FallingItem({
+    required this.id,
+    required this.imageAsset,
+    required this.x,
+    this.y = -0.1,
+    required this.speed,
+    this.size = 56.0,
+  });
+}
+
+class AtrapaCocoScreen extends StatefulWidget {
+  final String? currentLanguageCode;
+
+  const AtrapaCocoScreen({super.key, this.currentLanguageCode});
+
+  @override
+  State<AtrapaCocoScreen> createState() => _AtrapaCocoScreenState();
+}
+
+class _AtrapaCocoScreenState extends State<AtrapaCocoScreen>
+    with TickerProviderStateMixin {
+  final List<Map<String, String>> _catalog = [
+    {
+      'id': 'libro',
+      'label': 'LIBRO',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/libro.png'
+    },
+    {
+      'id': 'manzana',
+      'label': 'MANZANA',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/apple.png'
+    },
+    {
+      'id': 'platano',
+      'label': 'BANANO',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/banana.png'
+    },
+    {
+      'id': 'cafe',
+      'label': 'CAFÉ',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/cafe.png'
+    },
+    {
+      'id': 'lapiz',
+      'label': 'LÁPIZ',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/lapiz.png'
+    },
+    {
+      'id': 'limon',
+      'label': 'LIMÓN',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/limon.png'
+    },
+    {
+      'id': 'maiz',
+      'label': 'MAÍZ',
+      'asset': 'assets/images/arcade/juegos/atrapa_coco/caida1/maiz.png'
+    },
+  ];
+
+  late Map<String, String> _currentTarget;
+  int _score = 0;
+  int _streak = 0;
+  int _lives = 3;
+  double _cocoX = 0.5;
+  final double _cocoSize = 100.0;
+
+  Timer? _gameTimer;
+  final List<FallingItem> _items = [];
+  final Random _random = Random();
+  int _ticksSinceLastSpawn = 0;
+  bool _isGameOver = false;
+
+  late AnimationController _winAnimController;
+  late Animation<double> _targetScaleAnim;
+  late Animation<double> _floatingTextOffset;
+  late Animation<double> _floatingTextOpacity;
+
+  late AnimationController _shakeAnimController;
+  late Animation<double> _shakeAnim;
+
+  bool _showSuccessBadge = false;
+  bool _showErrorFlash = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAnimations();
+    _pickNewTarget();
+    _startGameLoop();
+  }
+
+  void _setupAnimations() {
+    _winAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+
+    _targetScaleAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 60),
+    ]).animate(
+      CurvedAnimation(parent: _winAnimController, curve: Curves.easeOutBack),
+    );
+
+    _floatingTextOffset = Tween<double>(begin: 0.0, end: -60.0).animate(
+      CurvedAnimation(parent: _winAnimController, curve: Curves.easeOut),
+    );
+
+    _floatingTextOpacity = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 50),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 30),
+    ]).animate(_winAnimController);
+
+    _shakeAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _shakeAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -12.0), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: -12.0, end: 12.0), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: 12.0, end: -6.0), weight: 25),
+      TweenSequenceItem(tween: Tween(begin: -6.0, end: 0.0), weight: 25),
+    ]).animate(CurvedAnimation(parent: _shakeAnimController, curve: Curves.linear));
+  }
+
+  void _pickNewTarget() {
+    _currentTarget = _catalog[_random.nextInt(_catalog.length)];
+  }
+
+  void _startGameLoop() {
+    _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!mounted || _isGameOver) return;
+      _updateGame();
+    });
+  }
+
+  void _spawnItem() {
+    final bool shouldSpawnTarget =
+        _random.nextDouble() < 0.42 && !_items.any((i) => i.id == _currentTarget['id']);
+
+    final itemData = shouldSpawnTarget
+        ? _currentTarget
+        : _catalog[_random.nextInt(_catalog.length)];
+
+    _items.add(
+      FallingItem(
+        id: itemData['id']!,
+        imageAsset: itemData['asset']!,
+        x: 0.12 + _random.nextDouble() * 0.76,
+        y: -0.08,
+        speed: 0.004 + _random.nextDouble() * 0.003,
+      ),
+    );
+  }
+
+  void _onCorrectCatch() {
+    _streak++;
+    _score += 10 + (_streak > 3 ? 5 : 0);
+    _items.clear();
+
+    _showSuccessBadge = true;
+    _winAnimController.forward(from: 0.0).then((_) {
+      if (mounted) {
+        setState(() => _showSuccessBadge = false);
+      }
+    });
+
+    _pickNewTarget();
+  }
+
+  void _onWrongCatch() {
+    _streak = 0;
+    _lives--;
+    _showErrorFlash = true;
+
+    _shakeAnimController.forward(from: 0.0).then((_) {
+      if (mounted) {
+        setState(() => _showErrorFlash = false);
+      }
+    });
+
+    if (_lives <= 0) {
+      _triggerGameOver();
+    }
+  }
+
+  void _triggerGameOver() {
+    _isGameOver = true;
+    _gameTimer?.cancel();
+    _showGameOverModal();
+  }
+
+  void _showGameOverModal() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'GameOver',
+      barrierColor: Colors.black.withAlpha(160),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (ctx, anim1, anim2) {
+        return const SizedBox.shrink();
+      },
+      transitionBuilder: (ctx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.elasticOut);
+        return ScaleTransition(
+          scale: curved,
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF1E3A8A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+              side: const BorderSide(color: Color(0xFFFFD54F), width: 3),
+            ),
+            title: const Text(
+              '¡Juego Terminado!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 22,
+                letterSpacing: 1.2,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/images/arcade/juegos/atrapa_coco/coco_atrapa.png',
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.sentiment_neutral, size: 70, color: Colors.amber),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(30),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Puntuación: $_score',
+                    style: const TextStyle(
+                      color: Color(0xFFFFD54F),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.spaceEvenly,
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pop(context);
+                },
+                child: const Text(
+                  'Salir',
+                  style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF9100),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _restartGame();
+                },
+                child: const Text('Reintentar', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _restartGame() {
+    setState(() {
+      _score = 0;
+      _streak = 0;
+      _lives = 3;
+      _isGameOver = false;
+      _items.clear();
+      _pickNewTarget();
+    });
+    _startGameLoop();
+  }
+
+  void _updateGame() {
+    setState(() {
+      _ticksSinceLastSpawn++;
+      if (_ticksSinceLastSpawn > 72) {
+        _spawnItem();
+        _ticksSinceLastSpawn = 0;
+      }
+
+      for (int i = _items.length - 1; i >= 0; i--) {
+        final item = _items[i];
+        item.y += item.speed;
+
+        if (item.y >= 0.74 && item.y <= 0.86) {
+          final double distance = (item.x - _cocoX).abs();
+          if (distance < 0.14) {
+            if (item.id == _currentTarget['id']) {
+              _onCorrectCatch();
+              break;
+            } else {
+              _onWrongCatch();
+              _items.removeAt(i);
+              continue;
+            }
+          }
+        }
+
+        if (item.y > 1.05) {
+          if (item.id == _currentTarget['id']) {
+            _onWrongCatch();
+          }
+          _items.removeAt(i);
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _gameTimer?.cancel();
+    _winAnimController.dispose();
+    _shakeAnimController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF1E3A8A),
+      body: SafeArea(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragUpdate: (details) {
+            if (_isGameOver) return;
+            setState(() {
+              _cocoX += details.delta.dx / size.width;
+              _cocoX = _cocoX.clamp(0.12, 0.88);
+            });
+          },
+          child: Stack(
+            children: [
+              if (_showErrorFlash)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.red.withAlpha(60),
+                  ),
+                ),
+
+              Positioned(
+                top: 8,
+                left: 12,
+                right: 12,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    Row(
+                      children: List.generate(3, (index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Icon(
+                            Icons.favorite,
+                            size: 24,
+                            color: index < _lives ? Colors.redAccent : Colors.white24,
+                          ),
+                        );
+                      }),
+                    ),
+                    Row(
+                      children: [
+                        if (_streak > 1)
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.orangeAccent,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              '🔥 x$_streak',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFC107),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(30),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '⭐ $_score',
+                            style: const TextStyle(
+                              color: Color(0xFF1A1A1A),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              Positioned(
+                top: 50,
+                left: 0,
+                right: 0,
+                child: ScaleTransition(
+                  scale: _targetScaleAnim,
+                  child: Column(
+                    children: [
+                      Text(
+                        _currentTarget['label']!,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2.0,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 220,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD54F),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              ..._items.map((item) {
+                return Positioned(
+                  left: (item.x * size.width) - (item.size / 2),
+                  top: item.y * size.height,
+                  child: Image.asset(
+                    item.imageAsset,
+                    width: item.size,
+                    height: item.size,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.help_outline,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                );
+              }),
+
+              if (_showSuccessBadge)
+                AnimatedBuilder(
+                  animation: _winAnimController,
+                  builder: (context, child) {
+                    return Positioned(
+                      left: (_cocoX * size.width) - 30,
+                      bottom: 120 - _floatingTextOffset.value,
+                      child: Opacity(
+                        opacity: _floatingTextOpacity.value,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.greenAccent.shade700,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(40),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            '+10 ✨',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+              AnimatedBuilder(
+                animation: _shakeAnimController,
+                builder: (context, child) {
+                  return Positioned(
+                    left: (_cocoX * size.width) - (_cocoSize / 2) + _shakeAnim.value,
+                    bottom: 40,
+                    child: child!,
+                  );
+                },
+                child: Image.asset(
+                  'assets/images/arcade/juegos/atrapa_coco/coco_atrapa.png',
+                  width: _cocoSize,
+                  height: _cocoSize,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: _cocoSize,
+                    height: _cocoSize,
+                    decoration: const BoxDecoration(
+                      color: Colors.amber,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.face, size: 50, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
