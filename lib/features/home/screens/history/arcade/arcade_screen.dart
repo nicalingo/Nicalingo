@@ -19,7 +19,11 @@ class ArcadeScreen extends StatelessWidget {
           child: CircleAvatar(
             backgroundColor: AppColors.primaryYellow,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textDark, size: 18),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: AppColors.textDark,
+                size: 18,
+              ),
               onPressed: () => Navigator.pop(context),
             ),
           ),
@@ -32,7 +36,7 @@ class ArcadeScreen extends StatelessWidget {
             border: Border.all(color: AppColors.textWhite, width: 3),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(40),
+                color: Colors.black.withValues(alpha: 0.16),
                 blurRadius: 6,
                 offset: const Offset(0, 3),
               ),
@@ -70,7 +74,7 @@ class ArcadeScreen extends StatelessWidget {
                   _buildGameCard(
                     title: "Atrapa con Coco",
                     tag: "Refuerzo",
-                    imageAsset: "assets/images/arcade/icononos/come_coco.jpeg",
+                    imageAsset: "assets/images/arcade/iconos/come_coco.jpeg",
                     cardColor: const Color(0xFFFFD180),
                     isEnabled: true,
                     actionText: "Jugar",
@@ -151,12 +155,12 @@ class ArcadeScreen extends StatelessWidget {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: cardColor.withAlpha(230),
+        color: cardColor.withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(25),
+            color: Colors.black.withValues(alpha: 0.10),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -171,7 +175,7 @@ class ArcadeScreen extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withAlpha(220),
+                color: Colors.white.withValues(alpha: 0.86),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -198,14 +202,14 @@ class ArcadeScreen extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) => Icon(
                           icon ?? Icons.sports_esports_rounded,
                           size: 54,
-                          color: Colors.black87.withAlpha(180),
+                          color: Colors.black87.withValues(alpha: 0.70),
                         ),
                       ),
                     )
                   : Icon(
                       icon ?? Icons.sports_esports_rounded,
                       size: 54,
-                      color: Colors.black87.withAlpha(180),
+                      color: Colors.black87.withValues(alpha: 0.70),
                     ),
             ),
           ),
@@ -226,7 +230,9 @@ class ArcadeScreen extends StatelessWidget {
             child: ElevatedButton(
               onPressed: isEnabled ? onTap : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: isEnabled ? const Color(0xFFFF9100) : Colors.grey.shade400,
+                backgroundColor: isEnabled
+                    ? const Color(0xFFFF9100)
+                    : Colors.grey.shade400,
                 foregroundColor: Colors.white,
                 elevation: isEnabled ? 4 : 0,
                 shape: RoundedRectangleBorder(
